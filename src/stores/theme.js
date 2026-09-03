@@ -14,7 +14,7 @@ export const PRESET_COLORS = [
 
 // 校验合法 6 位十六进制色值
 const isHex = v => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
-const DEFAULT_COLOR = '#17c964'
+const DEFAULT_COLOR = '#ef4444'
 
 /* ---------- 色彩换算 ---------- */
 function hexToHsl(hex) {
@@ -59,7 +59,8 @@ export const useThemeStore = defineStore('theme', {
     primaryColor: isHex(localStorage.getItem('theme_primary'))
       ? localStorage.getItem('theme_primary')
       : DEFAULT_COLOR,
-    isDark: localStorage.getItem('theme_dark') === '1'
+    // 默认深色：未设置过（null）时为深色；显式 '0'/浅色 或 '1'/深色 才沿用用户选择
+    isDark: localStorage.getItem('theme_dark') === null || localStorage.getItem('theme_dark') === '1'
   }),
 
   actions: {
