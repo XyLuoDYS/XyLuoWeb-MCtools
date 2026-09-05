@@ -1,5 +1,2 @@
 name = "xyluo-mc-tools"
-compatibility_date = "2026-09-05"
-
-[site]
-bucket = "./dist"
+pages_build_output_dir = "./dist"
