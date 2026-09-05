@@ -1,2 +1,2 @@
-name = "xyluo-mc-tools"
+name = 'xyluoweb-mctools'
 pages_build_output_dir = "./dist"
