@@ -416,6 +416,9 @@ let dragPtId = null
 let dragMoved = false
 let dragStartX = 0
 let dragLastPos = 0
+// 本次按下是否「单击在唯一选中的点上」——按下时先记下来，等松手时若不是拖动才取消选中。
+// 不能在按下瞬间就取消：那会让选区在拖动开始前消失，表现为「点一下切换一下、拖不动」。
+let clickToggleId = null
 
 function posFromEvent(e) {
   const rect = trackRef.value.getBoundingClientRect()
@@ -440,6 +443,7 @@ function barColorAt(t) {
 }
 function onPointDown(p, e) {
   e.preventDefault() // 防止拖动时触发文字选中
+  clickToggleId = null
   if (e.ctrlKey || e.metaKey) {
     // Ctrl+单击：叠加 / 移除选中
     const s = new Set(selectedPointIds.value)
@@ -450,10 +454,12 @@ function onPointDown(p, e) {
   } else if (!selectedPointIds.value.has(p.id)) {
     // 单击未选中的点：单选该点
     selectedPointIds.value = new Set([p.id])
+  } else if (selectedPointIds.value.size === 1) {
+    // 单击「唯一选中的点」：先只做个标记，真正的取消选中放到松手时（onTrackUp）。
+    // 这样按住拖动依然能拖（拖动会清掉这个标记），单击才取消，两者不再打架。
+    clickToggleId = p.id
   }
-  // 已在选区里的点：保持选区不动（多选时整组拖动）。
-  // ⚠️ 这里故意不做「再点一下取消选中」——那会让按下鼠标的一瞬间先取消选中再 return，
-  // 表现为「点一下切换一下、拖不动」。取消选中请用 Esc 或点击别处。
+  // 已在选区里的点：保持选区不动（多选时整组拖动）
   dragPtId = p.id
   dragMoved = false
   dragStartX = e.clientX
@@ -507,11 +513,19 @@ function onTrackMove(e) {
   dragMoved = true
   applyGroupDrag(posFromEvent(e))
 }
-function onTrackUp() {
+function onTrackUp(e) {
   if (dragPtId == null) return
+  const clickId = clickToggleId
+  // 只有「按下时标记了要切换」且「整段过程没有发生拖动」才算一次单击；
+  // pointercancel（手势被系统/浏览器打断）不算，避免误取消选中。
+  const isClick = clickId != null && !dragMoved && e?.type !== 'pointercancel'
   dragPtId = null
   dragMoved = false
+  clickToggleId = null
   stopDragListen()
+  if (isClick && selectedPointIds.value.size === 1 && selectedPointIds.value.has(clickId)) {
+    selectedPointIds.value = new Set() // 单击已选中的点 → 取消选中
+  }
 }
 function deleteSelectedPoint() {
   if (!selectedPointIds.value.size) return
@@ -1228,7 +1242,7 @@ function doImport() {
             </div>
 
             <div class="tip-line">
-              <b>点击条子空白处</b>创建颜色点 · <b>点击颜色点</b>选中编辑 · <b>按住拖动</b>调整位置（移出条子也能继续拖） · <b>Ctrl+点击</b>多选 · <b>Esc</b> 取消选中
+              <b>点击条子空白处</b>创建颜色点 · <b>点击颜色点</b>选中编辑 · <b>再次单击</b>取消选中 · <b>按住拖动</b>调整位置（移出条子也能继续拖） · <b>Ctrl+点击</b>多选
             </div>
 
             <!-- 渐变编辑条 -->
