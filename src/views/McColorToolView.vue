@@ -300,6 +300,15 @@ function toggleResetAtInsertPos() {
 // 非输入框内按 Del/Backspace：多选了颜色点 → 删点；选中了字符 → 删字符（样式随 text watcher 自动清理）
 function onKeydown(e) {
   if (e.target instanceof Element && e.target.matches('input, textarea, [contenteditable="true"]')) return
+  // Esc：取消颜色点的选中状态。
+  // 单击不再「再点一下取消」，所以这里保留一个明确的取消入口，避免选中态只能靠删除来解除。
+  if (e.key === 'Escape') {
+    if (selectedPointIds.value.size) {
+      e.preventDefault()
+      selectedPointIds.value = new Set()
+    }
+    return
+  }
   if (e.key !== 'Delete' && e.key !== 'Backspace') return
   if (selectedPointIds.value.size) {
     e.preventDefault()
@@ -439,14 +448,12 @@ function onPointDown(p, e) {
     selectedPointIds.value = s
     if (!s.has(p.id)) return // 移除选中后不进入拖动
   } else if (!selectedPointIds.value.has(p.id)) {
-    // 普通点击未选中的点：单选该点
+    // 单击未选中的点：单选该点
     selectedPointIds.value = new Set([p.id])
-  } else if (selectedPointIds.value.size === 1) {
-    // 普通单击唯一选中的点：取消选择
-    selectedPointIds.value = new Set()
-    return
   }
-  // 已多选时点其中一个选中点：保持选区，进入整组拖动
+  // 已在选区里的点：保持选区不动（多选时整组拖动）。
+  // ⚠️ 这里故意不做「再点一下取消选中」——那会让按下鼠标的一瞬间先取消选中再 return，
+  // 表现为「点一下切换一下、拖不动」。取消选中请用 Esc 或点击别处。
   dragPtId = p.id
   dragMoved = false
   dragStartX = e.clientX
@@ -468,14 +475,19 @@ function onTrackDown(e) {
   dragLastPos = pos
   startDragListen()
 }
-// 拖动期间监听挂到 window 上：光标移出渐变条（甚至移出页面）仍可继续拖动
+// 拖动期间监听挂到 window 上：光标/手指移出渐变条（甚至移出页面）也仍可继续拖。
+// ⚠️ 必须用 pointermove/pointerup，不能用 mousemove/mouseup ——
+//    触屏上 pointerdown 里调了 preventDefault()，浏览器不会再补发合成鼠标事件，
+//    用 mouse 事件会让手机端「按下去纹丝不动」。
 function startDragListen() {
-  window.addEventListener('mousemove', onTrackMove)
-  window.addEventListener('mouseup', onTrackUp)
+  window.addEventListener('pointermove', onTrackMove)
+  window.addEventListener('pointerup', onTrackUp)
+  window.addEventListener('pointercancel', onTrackUp)
 }
 function stopDragListen() {
-  window.removeEventListener('mousemove', onTrackMove)
-  window.removeEventListener('mouseup', onTrackUp)
+  window.removeEventListener('pointermove', onTrackMove)
+  window.removeEventListener('pointerup', onTrackUp)
+  window.removeEventListener('pointercancel', onTrackUp)
 }
 // 整组拖动：所有选中点保持间距一起平移，clamp 到 0~100
 function applyGroupDrag(pos) {
@@ -1216,7 +1228,7 @@ function doImport() {
             </div>
 
             <div class="tip-line">
-              <b>点击条子空白处</b>创建颜色点 · <b>点击颜色点</b>选中编辑 · <b>Ctrl+点击</b>多选 · <b>按住拖动</b>调整位置（移出条子也能继续拖）
+              <b>点击条子空白处</b>创建颜色点 · <b>点击颜色点</b>选中编辑 · <b>按住拖动</b>调整位置（移出条子也能继续拖） · <b>Ctrl+点击</b>多选 · <b>Esc</b> 取消选中
             </div>
 
             <!-- 渐变编辑条 -->
@@ -2057,6 +2069,15 @@ function doImport() {
   transform: translate(-50%, -50%);
   cursor: grab;
   transition: box-shadow 0.12s ease, transform 0.12s ease;
+  /* 触屏：在点上按住拖动时不滚动页面，pointermove 才能连续派发 */
+  touch-action: none;
+}
+/* 指尖比鼠标粗，把命中区向外扩一圈（视觉不变） */
+.grad-pt::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
 }
 .grad-pt:hover {
   transform: translate(-50%, -50%) scale(1.2);
