@@ -118,4 +118,18 @@ defineProps({
 .tool-card:not(.soon):hover .card-enter {
   letter-spacing: 1px;
 }
+/* 触屏：hover 会粘在点击过的卡片上，关掉上浮与放大 */
+@media (hover: none) {
+  .tool-card:not(.soon):hover {
+    transform: none;
+    box-shadow: var(--shadow);
+    border-color: var(--card-border);
+  }
+  .tool-card:not(.soon):hover .card-banner img {
+    transform: none;
+  }
+  .tool-card:not(.soon):hover .card-enter {
+    letter-spacing: normal;
+  }
+}
 </style>

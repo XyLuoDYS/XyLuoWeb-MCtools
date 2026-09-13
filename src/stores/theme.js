@@ -15,6 +15,12 @@ export const PRESET_COLORS = [
 // 校验合法 6 位十六进制色值
 const isHex = v => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
 const DEFAULT_COLOR = '#ef4444'
+// 读取 0-100 的整数配置，非法值回退到默认
+const clampInt = (v, min, max, dft) => {
+  const n = parseInt(v, 10)
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dft
+}
+const DEFAULT_BG_STRENGTH = 62
 
 /* ---------- 色彩换算 ---------- */
 function hexToHsl(hex) {
@@ -60,7 +66,9 @@ export const useThemeStore = defineStore('theme', {
       ? localStorage.getItem('theme_primary')
       : DEFAULT_COLOR,
     // 默认深色：未设置过（null）时为深色；显式 '0'/浅色 或 '1'/深色 才沿用用户选择
-    isDark: localStorage.getItem('theme_dark') === null || localStorage.getItem('theme_dark') === '1'
+    isDark: localStorage.getItem('theme_dark') === null || localStorage.getItem('theme_dark') === '1',
+    // 背景图强度 0(最淡护眼) ~ 100(最清晰)，仅亮色模式生效
+    bgStrength: clampInt(localStorage.getItem('theme_bg_strength'), 0, 100, DEFAULT_BG_STRENGTH)
   }),
 
   actions: {
@@ -111,13 +119,14 @@ export const useThemeStore = defineStore('theme', {
             heroGradient: `linear-gradient(135deg, rgba(${rgb}, 0.16), rgba(${rgb}, 0.05))`
           }
         : {
-            bg: hslToHex(h, 55, 95),
-            bgSoft: hslToHex(h, 50, 92),
-            cardBg: hslToHex(h, 60, 97.5),
-            cardBorder: hslToHex(h, 45, 88.5),
-            chipBg: 'rgba(0, 0, 0, 0.04)',
-            navbarBg: `rgba(${hexToRgbStr(hslToHex(h, 60, 97.5))}, 0.88)`,
-            heroGradient: `linear-gradient(135deg, rgba(${rgb}, 0.12), rgba(${rgb}, 0.04))`
+            // 亮色：饱和度压低、亮度拉高，只保留一丝主题色调；卡片接近纯白以拉开层次
+            bg: hslToHex(h, 22, 96.5),
+            bgSoft: hslToHex(h, 20, 93),
+            cardBg: hslToHex(h, 32, 99.2),
+            cardBorder: hslToHex(h, 24, 91),
+            chipBg: 'rgba(15, 23, 42, 0.05)',
+            navbarBg: `rgba(${hexToRgbStr(hslToHex(h, 32, 99.2))}, 0.92)`,
+            heroGradient: `linear-gradient(135deg, rgba(${rgb}, 0.09), rgba(${rgb}, 0.03))`
           }
 
       root.style.setProperty('--bg', palette.bg)
@@ -128,6 +137,11 @@ export const useThemeStore = defineStore('theme', {
       root.style.setProperty('--navbar-bg', palette.navbarBg)
       root.style.setProperty('--hero-gradient', palette.heroGradient)
 
+      // 背景强度：滑块越大 → 背景图越不透明、白色蒙版越薄（暗色模式固定为原图、无蒙版）
+      const s = clampInt(this.bgStrength, 0, 100, DEFAULT_BG_STRENGTH) / 100
+      root.style.setProperty('--bg-opacity', this.isDark ? '1' : (0.5 + s * 0.45).toFixed(3))
+      root.style.setProperty('--bg-veil', this.isDark ? '0' : (0.6 - s * 0.36).toFixed(3))
+
       root.classList.toggle('dark', this.isDark)
     },
 
@@ -135,6 +149,12 @@ export const useThemeStore = defineStore('theme', {
       if (!isHex(color)) return
       this.primaryColor = color
       localStorage.setItem('theme_primary', color)
+      this.applyTheme()
+    },
+
+    setBgStrength(value) {
+      this.bgStrength = clampInt(value, 0, 100, DEFAULT_BG_STRENGTH)
+      localStorage.setItem('theme_bg_strength', String(this.bgStrength))
       this.applyTheme()
     },
 

@@ -1,16 +1,17 @@
 /* ========== 亮色主题变量 ========== */
+/* 柔化处理：降低背景图干扰、加强卡片层次、提升文字对比度 */
 :root {
-  --bg: #f4f6f9;
-  --bg-soft: #ecf0f5;
+  --bg: #f7f8fa;
+  --bg-soft: #f1f3f6;
   --card-bg: #ffffff;
-  --card-border: #e4e9f0;
-  --text: #24292f;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-  --shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.12);
-  --navbar-bg: rgba(255, 255, 255, 0.82);
-  --chip-bg: rgba(0, 0, 0, 0.04);
+  --card-border: #e6eaf0;
+  --text: #1f2429;
+  --text-secondary: #5a6472;
+  --text-muted: #8a93a0;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 14px rgba(16, 24, 40, 0.06);
+  --shadow-hover: 0 2px 6px rgba(16, 24, 40, 0.06), 0 12px 30px rgba(16, 24, 40, 0.1);
+  --navbar-bg: rgba(255, 255, 255, 0.92);
+  --chip-bg: rgba(15, 23, 42, 0.05);
 }
 
 /* ========== 暗色主题变量 ========== */
@@ -47,24 +48,61 @@ body {
   color: var(--text);
   transition: background-color 0.3s ease, color 0.3s ease;
   min-height: 100vh;
+  /* 可继承属性：让全站文本都能在任意位置断行，长串英文/代码不会撑破父容器 */
+  overflow-wrap: break-word;
+  /* 全局防横向撑开的兜底：任何元素意外变宽（长文本、选中状态、固定尺寸网格）
+     都就地裁掉，不会产生横向滚动条、不会把整页顶宽。
+     必须用 clip 而不是 hidden —— hidden 会让 body 变成滚动容器，
+     导航栏的 position:sticky 就会改为相对 body 定位而失效。
+     clip + overflow-y:visible 是合法组合（规范规定此时 visible 不会被计算成 auto），
+     不创建滚动容器，因此 sticky 与 fixed 背景层都不受影响。 */
+  overflow-x: clip;
 }
 
 /* ========== 二次元背景层 ========== */
-/* 亮色模式正常显示；暗色模式轻微偏灰压暗（保留色彩，不是黑白） */
+/* 亮色：轻微降饱和柔化（保留画面可辨认），具体浓淡由 --bg-opacity / --bg-veil 控制（导航栏"背景强度"滑块） */
 body::before {
   content: '';
   position: fixed;
-  inset: 0;
-  z-index: -1;
+  /* 向外扩展一圈：blur 边缘不会透出底色；亮暗两模式 inset 相同 → 背景尺寸完全一致 */
+  inset: -8px;
   background-image: var(--bg-image);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  filter: saturate(1);
-  transition: filter 0.4s ease;
+  /* 层级压到 -3：蒙版(-2)在它之上、内容里的 z-index:-1 装饰元素在最上 */
+  z-index: -3;
+  filter: saturate(0.85) brightness(1.05) contrast(0.97) blur(1px);
+  opacity: var(--bg-opacity, 0.78);
+  transition: filter 0.4s ease, opacity 0.4s ease;
 }
 html.dark body::before {
   filter: grayscale(0.25) brightness(0.45);
+  opacity: var(--bg-opacity, 1);
+}
+
+/* 可读性蒙版：亮色淡淡提亮（强度由 --bg-veil 控制），暗色完全不叠加 */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.78) 100%);
+  opacity: var(--bg-veil, 0.42);
+  transition: opacity 0.4s ease;
+}
+html.dark body::after {
+  opacity: var(--bg-veil, 0);
+}
+
+/* ========== 弹窗打开时的副作用抵消 ========== */
+/* Element 的 el-dialog / el-message-box 打开时会给 body 加 `width: calc(100% - 滚动条宽)`
+   来补偿「滚动条消失」。但本站 html 是 `overflow-y: scroll`（滚动条常驻、永不消失），
+   这个补偿纯属多余 —— 结果就是整页（含全屏背景图）被挤窄 8px，看起来像元素全被挤了。
+   这里把宽度还原，滚动条槽位仍由 scrollbar-gutter 保持，不会有任何位移。 */
+body.el-popup-parent--hidden {
+  width: auto !important;
 }
 
 #app {
@@ -128,6 +166,17 @@ a {
   margin: 0 auto;
   padding: 24px 20px 48px;
   flex: 1;
+}
+
+/* ========== 窄屏 ========== */
+@media (max-width: 640px) {
+  .page-container {
+    padding: 16px 14px 36px;
+  }
+  /* 触屏没有「移开」这个动作，点击后 hover 态会一直留着 —— 统一关掉位移/抬升类效果 */
+  .card:hover {
+    transform: none;
+  }
 }
 
 .card {

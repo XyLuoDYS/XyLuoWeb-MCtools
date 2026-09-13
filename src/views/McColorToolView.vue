@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import ReactiveColorPicker from '@/components/widgets/ReactiveColorPicker.vue'
 
@@ -33,8 +33,7 @@ const HEX_FORMATS = [
   { id: 'bbcode', label: 'BBCode ([COLOR=#RRGGBB])' },
   { id: 'mini_single', label: 'MiniMessage 单颜色 (<#RRGGBB>)' },
   { id: 'cmi', label: 'CMI ({#RRGGBB})' },
-  { id: 'easylib', label: 'EasyLib (<#RRGGBB>)' },
-  { id: 'rose', label: 'RoseGarden/TrMenu (<g:#RRGGBB:...>)' }
+  { id: 'easylib', label: 'EasyLib (<#RRGGBB>)' }
 ]
 
 // 内置渐变模板：一键应用到选中字符
@@ -155,6 +154,59 @@ const resets = ref(new Set())
 
 const selectionSorted = computed(() => [...selection.value].sort((a, b) => a - b))
 
+/* ---------------- 手机：点击直接选中 ---------------- */
+/* 点中哪个字符由元素自身边界决定，直接精确选中即可：
+     点一下 → 选中该字符
+     再点同一个 → 取消
+   打开「多选模式」后可逐个累加（点一下切换一次）。
+   已取消手机的拖动框选（原 onTouchMove/onTouchEnd 从没绑定过监听，本就是死代码）。 */
+function tapChar(i) {
+  insertPos.value = null
+  // 多选模式：点一下切换，可累加
+  if (multiMode.value) {
+    toggleOneChar(i)
+    return
+  }
+  // 已经是唯一选中项 → 再点取消
+  if (selection.value.size === 1 && selection.value.has(i)) {
+    selection.value = new Set()
+    return
+  }
+  selection.value = new Set([i])
+}
+
+const multiMode = ref(false)
+const isTouch = ref(false)
+let lastTouchAt = 0 // 触摸结束后浏览器会补发 mousedown，需要忽略
+
+function toggleMultiMode() {
+  multiMode.value = !multiMode.value
+}
+function toggleOneChar(i) {
+  const s = new Set(selection.value)
+  if (s.has(i)) s.delete(i)
+  else s.add(i)
+  selection.value = s
+}
+function invertSelection() {
+  if (!chars.value.length) return
+  const s = new Set()
+  for (let i = 0; i < chars.value.length; i++) if (!selection.value.has(i)) s.add(i)
+  selection.value = s
+}
+function clearSelection() {
+  selection.value = new Set()
+}
+
+// 字符上按下（触屏）：直接选中，不做拖动框选
+function onCharTouchStart(i, e) {
+  lastTouchAt = Date.now()
+  // 不让触摸再触发后续合成鼠标事件的拖动逻辑
+  dragging.value = false
+  pendingToggleOff = false
+  tapChar(i)
+}
+
 /* 小栏动画模式：
    - bar-slide：小栏出现/消失（选区从无到有）→ 高度塌陷动画
    - bar-fade：效果栏 ↔ 插入栏直接切换 → 纯交叉淡入淡出，卡片高度不变 */
@@ -169,12 +221,11 @@ watch(
 // 单击已选中的字符时先记账、mouse up 时再判定：没移动 = 取消选择，移到其他字符 = 拖动框选
 let pendingToggleOff = false
 function startDrag(i, e) {
+  // 触屏后浏览器补发的合成鼠标事件：忽略，否则会覆盖刚触摸选好的结果
+  if (Date.now() - lastTouchAt < 700) return
   insertPos.value = null
-  if (e.ctrlKey || e.metaKey) {
-    const s = new Set(selection.value)
-    if (s.has(i)) s.delete(i)
-    else s.add(i)
-    selection.value = s
+  if (e.ctrlKey || e.metaKey || multiMode.value) {
+    toggleOneChar(i)
     dragging.value = false
     return
   }
@@ -201,6 +252,7 @@ function selectAllChars() {
   insertPos.value = null
   selection.value = new Set(chars.value.map((_, i) => i))
 }
+
 const allCharsSelected = computed(() =>
   chars.value.length > 0 && selection.value.size === chars.value.length
 )
@@ -292,10 +344,19 @@ function onDocClickCloseFmt(e) {
 onMounted(() => {
   document.addEventListener('mousedown', onDocClickCloseFmt)
   window.addEventListener('keydown', onKeydown)
+  // 触屏检测：仅用于文案/样式分支。
+  // ⚠️ 不要在这里自动开启多选模式 —— 用户要求手机默认是「点一下选中、再点取消」的单选语义，
+  // 只有手动点右上角「多选」才进入可累加的逐个点选。
+  isTouch.value = window.matchMedia?.('(pointer: coarse)').matches ?? false
+  // 模式切换滑块：首帧、字体加载完成后、窗口尺寸变化时都重新量一次
+  nextTick(syncEmsSlider)
+  if (document.fonts) document.fonts.ready.then(syncEmsSlider)
+  window.addEventListener('resize', syncEmsSlider)
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', onDocClickCloseFmt)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('resize', syncEmsSlider)
   stopDragListen() // 防止渐变点拖动监听泄漏
 })
 
@@ -572,7 +633,15 @@ const PRESET_KEY = 'mccolor_presets'
 function loadPresets() {
   try {
     const raw = JSON.parse(localStorage.getItem(PRESET_KEY))
-    if (Array.isArray(raw)) return raw
+    if (!Array.isArray(raw)) return []
+    // 必须逐项校验：pts 缺失或为空会让 presetName() 读 pts[0].color 直接抛错、整页白屏
+    return raw
+      .filter(p =>
+        p && typeof p === 'object' &&
+        Array.isArray(p.pts) && p.pts.length > 0 &&
+        p.pts.every(pt => pt && typeof pt.color === 'string' && Number.isFinite(pt.pos))
+      )
+      .map(p => ({ ...p, id: Number.isFinite(p.id) ? p.id : 0 }))
   } catch { /* 忽略坏值 */ }
   return []
 }
@@ -619,7 +688,6 @@ function clearColorOfSelection() {
 
 /* ================= 输出生成 ================= */
 const isMiniFmt = computed(() => ['mini', 'mini_single', 'easylib'].includes(hexFormat.value))
-const isWrapFmt = computed(() => hexFormat.value === 'rose')
 
 function hexEmit(hex) {
   const h = hex.replace('#', '').toUpperCase()
@@ -672,31 +740,6 @@ const output = computed(() => {
       prevSig = '\u0000'
     }
     const st = charStyles.value[i]
-    if (isWrapFmt.value && st?.ct === 'hex') {
-      let j = i
-      while (j < cs.length && charStyles.value[j]?.ct === 'hex' && !resets.value.has(j)) j++
-      const mid = Math.floor((i + j - 1) / 2)
-      const stops = [charStyles.value[i].ch, charStyles.value[mid].ch, charStyles.value[j - 1].ch]
-        .map(c => '#' + c.replace('#', '').toUpperCase())
-      const uniq = stops[0] === stops[2] ? [stops[0]] : [stops[0], ...(stops[1] !== stops[0] && stops[1] !== stops[2] ? [stops[1]] : []), stops[2]]
-      const open = `<g:${uniq.join(':')}>`
-      const close = '</g>'
-      out += open
-      let runPrev = '\u0000'
-      for (let k = i; k < j; k++) {
-        const s2 = charStyles.value[k]
-        const fsig = JSON.stringify([!!s2.b, !!s2.i, !!s2.u, !!s2.s, !!s2.o])
-        if (fsig !== runPrev) {
-          out += fmtEmit(s2)
-          runPrev = fsig
-        }
-        out += cs[k]
-      }
-      out += close
-      prevSig = '\u0000'
-      i = j
-      continue
-    }
     const sig = st
       ? JSON.stringify([st.ct === 'legacy' ? legacyEmit(st.cc) : st.ct === 'hex' ? hexEmit(st.ch) : null, !!st.b, !!st.i, !!st.u, !!st.s, !!st.o])
       : 'none'
@@ -776,8 +819,16 @@ function mcBoldShadow(ch) {
 const OBF_CHARS = '!@#$%^&*()<>/\\|?~abcdefgxyz'
 const tick = ref(0)
 let obfTimer = null
+// 只有真的存在乱码字符时才跑定时器：否则页面会每 130ms 无意义地重渲染整个预览
+const hasObf = computed(() => previewRuns.value.some(r => r.style.o))
+function startObf() {
+  if (obfTimer == null) obfTimer = setInterval(() => (tick.value = (tick.value + 1) % 1000), 130)
+}
+function stopObf() {
+  if (obfTimer != null) { clearInterval(obfTimer); obfTimer = null }
+}
+watch(hasObf, on => (on ? startObf() : stopObf()), { immediate: true })
 onMounted(() => {
-  obfTimer = setInterval(() => (tick.value = (tick.value + 1) % 1000), 130)
   // MC 字体就绪后清缓存重算，避免字体未加载时探测出错误的粗体偏移
   Promise.all([
     document.fonts.load("22px 'Mojang'", 'A'),
@@ -787,7 +838,7 @@ onMounted(() => {
     fontsReady.value = true
   })
 })
-onUnmounted(() => clearInterval(obfTimer))
+onUnmounted(() => stopObf())
 function obfuscate(text) {
   void tick.value
   return text.split('').map(() => OBF_CHARS[Math.floor(Math.random() * OBF_CHARS.length)]).join('')
@@ -808,16 +859,307 @@ async function copyText(content) {
     ElMessage.success({ message: '已复制到剪贴板', duration: 1200 })
   }
 }
+
+/* ================= 模式切换 + 导入已有颜色代码 ================= */
+/* visual：可视化编辑（原来的交互）
+   import：把已经写好颜色代码的文字粘进来，解析成「纯文本 + 每字符样式 + 重置标记」
+   —— 解析结果与编辑器内部结构完全一致，所以解析完可以继续点选/上色，
+      并且会用当前选择的输出格式重新生成（等于顺带做了格式转换）。 */
+const editMode = ref('visual') // visual | import
+/* 切面切换方向：点右侧按钮 → 新面板从右滑入、旧的向左滑出（反方向同理） */
+const paneDir = ref('right') // right | left
+function switchMode(m) {
+  if (m === editMode.value) return
+  paneDir.value = m === 'import' ? 'right' : 'left'
+  editMode.value = m
+}
+
+/* ---- 模式切换按钮的滑动指示块 ----
+   两个按钮文字长度不同（4 字 / 6 字），宽度并不相等，
+   所以不用纯 CSS 的 50% 推算，而是量取选中按钮真实的 offsetWidth/offsetLeft 写进内联样式，保证滑块严丝合缝。 */
+const emsBtnA = ref(null)
+const emsBtnB = ref(null)
+const EMS_PAD = 4 // 与 .edit-mode-switch 的 padding 一致
+const emsSliderStyle = ref({})
+function syncEmsSlider() {
+  const btn = editMode.value === 'import' ? emsBtnB.value : emsBtnA.value
+  if (!btn) return
+  emsSliderStyle.value = {
+    width: btn.offsetWidth + 'px',
+    transform: `translateX(${btn.offsetLeft - EMS_PAD}px)`
+  }
+}
+watch(editMode, () => nextTick(syncEmsSlider))
+const importRaw = ref('')
+const IMPORT_DEMO = '&6&l公告 &r&7» &e今天 &a20:00 &e开服 &#FF7BD5新地图上线 <#55FFFF>欢迎来玩'
+
+// MC 效果码映射：l/o/n/m/k = 粗体/斜体/下划线/删除线/乱码
+// ⚠️ MC 的 'o' 是斜体，而内部标记里 'i' 才是斜体、'o' 是乱码，必须走映射表不能直接用
+const MC_FLAG = { l: 'b', o: 'i', n: 'u', m: 's', k: 'o' }
+const MINI_FLAG = { bold: 'b', italic: 'i', underlined: 'u', strikethrough: 's', obfuscated: 'o' }
+const MINI_COLOR = Object.fromEntries(MINI_NAMES.map((n, i) => [n, VANILLA_COLORS[i].code]))
+MINI_COLOR.grey = MINI_COLOR.gray
+MINI_COLOR.dark_grey = MINI_COLOR.dark_gray
+const LEGACY_CODE_SET = new Set(VANILLA_COLORS.map(c => c.code))
+// 查表统一走 hasOwnProperty：避免 <constructor> 这类标签命中 Object 原型上的属性
+const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key)
+const RE_HEX6 = /^[0-9a-fA-F]{6}$/
+const RE_BB = /^\[\/?(COLOR|B|BOLD|I|ITALIC|U|UNDERLINE|S|STRIKE|STRIKETHROUGH)(?:=#([0-9a-fA-F]{6}))?\]/i
+const RE_X_FORM = /^[&§]x((?:[&§][0-9a-fA-F]){6})/
+const RE_GRAD = /^<(g|gradient):([^>]+)>/i
+
+// 渐变插值：<g:#A:#B:#C> 的停靠点是等距的
+function gradColorAt(colors, t) {
+  if (!colors.length) return '#FFFFFF'
+  if (colors.length === 1) return colors[0].toUpperCase()
+  const seg = Math.min(Math.max(t, 0), 1) * (colors.length - 1)
+  const i = Math.min(Math.floor(seg), colors.length - 2)
+  return lerpColor(colors[i], colors[i + 1], seg - i).toUpperCase()
+}
+
+function parseMcCodes(raw) {
+  const src = String(raw).replace(/\\u00A7/g, '§') // MOTD 格式里的字面量 \u00A7
+  const text = []
+  const styles = []
+  const resets = new Set()
+
+  const newCtx = () => ({ color: null, b: false, i: false, u: false, s: false, o: false })
+  // 把当前上下文快照成内部样式对象（无任何样式时返回 null）
+  const snap = c => {
+    const st = {}
+    if (c.color) {
+      st.ct = c.color.ct
+      if (c.color.ct === 'legacy') st.cc = c.color.cc
+      else st.ch = c.color.ch
+    }
+    for (const k of ['b', 'i', 'u', 's', 'o']) if (c[k]) st[k] = true
+    return Object.keys(st).length ? st : null
+  }
+  const put = (ch, c) => { text.push(ch); styles.push(snap(c)) }
+
+  function walk(str, ctx) {
+    let i = 0
+    while (i < str.length) {
+      const ch = str[i]
+
+      /* ---- & / § 前缀 ---- */
+      if (ch === '&' || ch === '§') {
+        const next = str[i + 1] || ''
+        // &x&R&R&G&G&B&B（以及 §x…、\u00A7x…）
+        if (next === 'x' || next === 'X') {
+          const m = RE_X_FORM.exec(str.slice(i))
+          if (m) {
+            ctx.color = { ct: 'hex', ch: '#' + m[1].replace(/[&§]/g, '').toUpperCase() }
+            i += m[0].length
+            continue
+          }
+        }
+        // &#RRGGBB
+        if (next === '#') {
+          const h = str.slice(i + 2, i + 8)
+          if (RE_HEX6.test(h)) { ctx.color = { ct: 'hex', ch: '#' + h.toUpperCase() }; i += 8; continue }
+        }
+        const lc = next.toLowerCase()
+        if (lc === 'r') { resets.add(text.length); Object.assign(ctx, newCtx()); i += 2; continue }
+        if (MC_FLAG[lc]) { ctx[MC_FLAG[lc]] = true; i += 2; continue }
+        if (LEGACY_CODE_SET.has(lc)) { Object.assign(ctx, newCtx(), { color: { ct: 'legacy', cc: lc } }); i += 2; continue }
+        put(ch, ctx); i++; continue // 不是有效代码 → 当普通字符
+      }
+
+      /* ---- {#RRGGBB}（CMI） ---- */
+      if (ch === '{') {
+        const m = /^\{#([0-9a-fA-F]{6})\}/.exec(str.slice(i))
+        if (m) { ctx.color = { ct: 'hex', ch: '#' + m[1].toUpperCase() }; i += m[0].length; continue }
+      }
+
+      /* ---- [COLOR=#RRGGBB] / [/COLOR] / [B] …（BBCode） ---- */
+      if (ch === '[') {
+        const m = RE_BB.exec(str.slice(i))
+        if (m) {
+          const tag = m[1].toUpperCase()
+          const closing = str.slice(i, i + 2) === '[/'
+          if (tag === 'COLOR') ctx.color = closing ? null : (m[2] ? { ct: 'hex', ch: '#' + m[2].toUpperCase() } : null)
+          else {
+            const key = { B: 'b', BOLD: 'b', I: 'i', ITALIC: 'i', U: 'u', UNDERLINE: 'u', S: 's', STRIKE: 's', STRIKETHROUGH: 's' }[tag]
+            if (key) ctx[key] = !closing
+          }
+          i += m[0].length
+          continue
+        }
+      }
+
+      /* ---- < … >（MiniMessage / RoseGarden） ---- */
+      if (ch === '<') {
+        const rest = str.slice(i)
+        // 渐变 <g:#A:#B> … </g> / <gradient:#A:#B> … </gradient>
+        const gm = RE_GRAD.exec(rest)
+        if (gm) {
+          const tag = gm[1].toLowerCase()
+          // 只保留 #RRGGBB，丢掉 phase 之类的附加参数
+          const cols = gm[2].split(':').map(s => s.trim()).filter(s => /^#[0-9a-fA-F]{6}$/.test(s))
+          const after = rest.slice(gm[0].length)
+          const cm = new RegExp('</' + tag + '>', 'i').exec(after)
+          const inner = cm ? after.slice(0, cm.index) : after
+          const start = text.length
+          walk(inner, { ...ctx, color: null }) // 内部颜色由渐变覆盖，保留内部效果标记
+          const span = text.length - start
+          for (let k = 0; k < span; k++) {
+            const st = { ...(styles[start + k] || {}) }
+            delete st.cc // 内部若写过旧版颜色码，会被渐变覆盖，清掉避免残留
+            st.ct = 'hex'
+            st.ch = gradColorAt(cols, span > 1 ? k / (span - 1) : 0)
+            styles[start + k] = st
+          }
+          const prevColor = ctx.color
+          // 有闭合标签 → 颜色回退到渐变之前；没闭合 → 末尾色继续沿用
+          if (cm) ctx.color = prevColor
+          else if (cols.length) ctx.color = { ct: 'hex', ch: cols[cols.length - 1].toUpperCase() }
+          i += gm[0].length + inner.length + (cm ? cm[0].length : 0)
+          continue
+        }
+        // 闭合标签 </bold> / </red> / </#RRGGBB>
+        const cm2 = /^<\/(#[0-9a-fA-F]{6}|[a-z_]+)>/i.exec(rest)
+        if (cm2) {
+          const nm = cm2[1].toLowerCase()
+          if (has(MINI_FLAG, nm)) ctx[MINI_FLAG[nm]] = false
+          else if (has(MINI_COLOR, nm) || nm.startsWith('#')) ctx.color = null // 颜色回退到无
+          i += cm2[0].length
+          continue
+        }
+        // 单标签 <#RRGGBB> / <bold> / <red> / <reset>
+        const tm = /^<(#[0-9a-fA-F]{6}|[a-zA-Z_][a-zA-Z0-9_]*)>/.exec(rest)
+        if (tm) {
+          const name = tm[1].toLowerCase()
+          if (/^#[0-9a-fA-F]{6}$/.test(name)) { ctx.color = { ct: 'hex', ch: name.toUpperCase() }; i += tm[0].length; continue }
+          if (name === 'reset') { resets.add(text.length); Object.assign(ctx, newCtx()); i += tm[0].length; continue }
+          // MiniMessage 的命名色只换颜色，不清效果标记（<red><bold> 顺序无关）
+          if (has(MINI_COLOR, name)) { ctx.color = { ct: 'legacy', cc: MINI_COLOR[name] }; i += tm[0].length; continue }
+          if (has(MINI_FLAG, name)) { ctx[MINI_FLAG[name]] = true; i += tm[0].length; continue }
+          // 不是认识的标签 → 当普通字符（例如 "3<5" 这种）
+        }
+      }
+
+      put(ch, ctx)
+      i++
+    }
+  }
+
+  walk(src, newCtx())
+  return { text: text.join(''), styles, resets }
+}
+
+// 把解析结果灌进编辑器。文本整体替换会让 diff watcher 去平移旧样式，这里要跳过
+function applyParsed(p) {
+  if (p.text !== text.value) {
+    suppressTextWatch = true
+    text.value = p.text
+  }
+  charStyles.value = p.styles
+  resets.value = new Set(p.resets)
+  selection.value = new Set()
+  insertPos.value = null
+}
+
+function fillImportDemo() {
+  importRaw.value = IMPORT_DEMO
+}
+
+function doImport() {
+  const raw = importRaw.value
+  if (!raw.trim()) {
+    ElMessage.warning({ message: '先粘贴要解析的颜色代码', duration: 1800 })
+    return
+  }
+  let parsed
+  try {
+    parsed = parseMcCodes(raw)
+  } catch (e) {
+    ElMessage.error({ message: `解析失败：${e.message}`, duration: 2400 })
+    return
+  }
+  const n = [...parsed.text].length
+  if (!n) {
+    ElMessage.warning({ message: '没有解析出可编辑的字符', duration: 1800 })
+    return
+  }
+  const styled = parsed.styles.filter(s => s && (s.ct || s.b || s.i || s.u || s.s || s.o)).length
+  applyParsed(parsed)
+  switchMode('visual') // 解析完直接进入可视化编辑，继续改（带左滑动画）
+  ElMessage.success({
+    message: styled
+      ? `已解析 ${n} 个字符（${styled} 个带样式），输出会按当前格式重新生成`
+      : `已载入 ${n} 个字符，但没识别到颜色代码`,
+    duration: 2600
+  })
+}
 </script>
 
 <template>
   <div class="page-container">
     <div class="tool-header">
       <h1><el-icon class="h-icon"><MagicStick /></el-icon> 颜色代码生成</h1>
-      <p>选中字符 → 点颜色立即上色 → 复制代码，就是这么简单</p>
+      <p>
+        选中字符 → 点颜色立即上色 → 复制代码，就是这么简单
+      </p>
+      <!-- 模式切换 -->
+      <div class="edit-mode-switch" :class="{ right: editMode === 'import' }">
+        <span class="ems-slider" :style="emsSliderStyle" aria-hidden="true"></span>
+        <button
+          ref="emsBtnA"
+          type="button"
+          :class="{ on: editMode === 'visual' }"
+          @click="switchMode('visual')"
+        >
+          <el-icon><EditPen /></el-icon> 可视化编辑
+        </button>
+        <button
+          ref="emsBtnB"
+          type="button"
+          :class="{ on: editMode === 'import' }"
+          @click="switchMode('import')"
+        >
+          <el-icon><Upload /></el-icon> 粘贴代码解析
+        </button>
+      </div>
     </div>
 
-    <div class="mc-layout">
+    <!-- 切面切换动画：方向跟随按钮滑动 -->
+    <Transition :name="'pane-' + paneDir" mode="out-in">
+    <!-- ==================== 模式二：粘贴已有代码 ==================== -->
+    <div v-if="editMode === 'import'" key="import" class="import-wrap">
+      <div class="card panel-card">
+        <div class="panel-head">
+          <span class="card-title">粘贴已有颜色代码</span>
+          <span class="chip">{{ [...importRaw].length }} 字符</span>
+        </div>
+
+        <div class="tip-line">
+          自动识别格式：<b>&amp; / §</b> 单字符代码 ·
+          <b>&amp;#RRGGBB</b> · <b>&amp;x&amp;R&amp;R…</b> · <b>\u00A7x…</b> ·
+          <b>&lt;#RRGGBB&gt;</b> · <b>&lt;g:#A:#B&gt;</b> · <b>{#RRGGBB}</b> ·
+          <b>[COLOR=#RRGGBB]</b> · <b>MiniMessage</b>
+        </div>
+
+        <textarea
+          v-model="importRaw"
+          class="import-area"
+          spellcheck="false"
+          placeholder="把带颜色代码的文字粘在这里…&#10;例如：&6&l公告 &r&7» &e今天 &a20:00 开服"
+        />
+
+        <div class="import-actions">
+          <el-button type="primary" round @click="doImport">
+            <el-icon style="margin-right: 4px"><MagicStick /></el-icon> 解析并编辑
+          </el-button>
+          <el-button round @click="fillImportDemo">示例</el-button>
+          <el-button round :disabled="!importRaw" @click="importRaw = ''">清空</el-button>
+          <span class="import-note">解析后会自动回到可视化编辑，可继续改并换格式重新生成</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 模式一：可视化编辑 ==================== -->
+    <div v-else key="visual" class="mc-layout">
       <!-- ==================== 左：颜色 ==================== -->
       <div class="left-col">
         <div class="card panel-card">
@@ -891,7 +1233,7 @@ async function copyText(content) {
                 :class="{ sel: selectedPointIds.has(p.id) }"
                 :style="{ left: p.pos + '%', background: p.color }"
                 :title="`${p.color.toUpperCase()} · ${p.pos}%`"
-                @mousedown.stop="onPointDown(p, $event)"
+                @pointerdown.stop="onPointDown(p, $event)"
               />
             </div>
             <div class="grad-scale"><span>0%</span><span>50%</span><span>100%</span></div>
@@ -982,7 +1324,19 @@ async function copyText(content) {
                 :title="allCharsSelected ? '取消全选' : '选中全部字符'"
                 @click="toggleSelectAll"
               >全选</button>
-              <span class="chip">单击 · 拖动框选 · Ctrl 多选 · 点间隙插入</span>
+              <button
+                class="qb-btn multi-mode-btn"
+                :class="{ on: multiMode }"
+                :title="multiMode ? '关闭多选：恢复单击单选 / 拖动框选' : '开启多选：逐个点选，可累加'"
+                @click="toggleMultiMode"
+              >多选</button>
+              <span class="chip hint-chip">{{
+                multiMode
+                  ? '点一下选中，再点取消（可累加）'
+                  : isTouch
+                    ? '点一下选中 · 再点一下取消'
+                    : '单击 · 拖动框选 · Ctrl 多选 · 点间隙插入'
+              }}</span>
             </div>
           </div>
           <div class="select-area" @mouseup="endDrag" @mouseleave="endDrag" @mousedown.self="clearSelectionOnBg">
@@ -1005,9 +1359,11 @@ async function copyText(content) {
                   class="char"
                   :class="{ selected: selection.has(i), 'fx-b': charStyles[i]?.b, 'fx-o': charStyles[i]?.o }"
                   :data-ch="ch"
+                  :data-i="i"
                   :style="charCss(i)"
                   @mousedown.prevent="startDrag(i, $event)"
                   @mouseenter="extendDrag(i)"
+                  @touchstart="onCharTouchStart(i, $event)"
                 ><i v-if="charStyles[i]?.b" class="fx-b-wrap" aria-hidden="true"><i class="fx-b-ring" :data-ch="ch" /><i class="fx-b-cut" :data-ch="ch" /></i>{{ ch }}</span>
               </template>
               <span class="gap" :class="{ active: insertPos === chars.length }" title="在末尾插入" @click="clickGap(chars.length)">
@@ -1021,6 +1377,13 @@ async function copyText(content) {
             </template>
             <span v-else class="preview-placeholder">先在上方输入文字</span>
           </div>
+
+          <!-- 触屏引导：桌面版提示在窄屏会被隐藏，这里单独给触屏设备一条常驻说明 -->
+          <p v-if="chars.length" class="touch-tip">
+            {{ multiMode
+              ? '多选模式：点一下选中 · 再点一下取消（可累加）'
+              : '点一下选中该字符 · 再点一下取消' }}
+          </p>
 
           <!-- 快捷工具栏：选中 → 效果栏；点间隙 → 插入栏。
                两栏高度一致，切换时旧栏悬浮原地淡出（不塌陷占位）→ 卡片高度不变、不跳动 -->
@@ -1041,6 +1404,11 @@ async function copyText(content) {
               <button class="qb-btn qb-clear" title="清除选中字符的颜色（保留字体效果）" @click="clearColorOfSelection">
                 <el-icon><Brush /></el-icon> 清色
               </button>
+              <template v-if="multiMode">
+                <span class="qb-sep" style="margin-left: 4px" />
+                <button class="qb-btn" title="选中所有未选中的字符" @click="invertSelection">反选</button>
+                <button class="qb-btn" title="取消全部选中" @click="clearSelection">清空</button>
+              </template>
               <span class="qb-sep" style="margin-left: 4px" />
               <span class="qb-label">替换</span>
               <input
@@ -1137,6 +1505,7 @@ async function copyText(content) {
         </div>
       </div>
     </div>
+    </Transition>
   </div>
 </template>
 
@@ -1160,9 +1529,134 @@ async function copyText(content) {
   font-size: 14px;
 }
 
+/* ========== 模式切换（标题下方）：毛玻璃底 + 滑块左右滑动 ========== */
+.edit-mode-switch {
+  position: relative;
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 4px;
+  border-radius: 12px;
+  /* 底色必须半透明，backdrop-filter 才有「磨砂」观感（透出身后的背景图 / 卡片） */
+  background: color-mix(in srgb, var(--card-bg) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--card-border) 80%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+/* 滑动指示块：宽/位移由 JS 量取按钮实际尺寸后写入内联样式（两个按钮文字长短不同、宽度不等） */
+.ems-slider {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  left: 4px;
+  bottom: 4px;
+  width: calc(50% - 6px); /* 首帧兜底，挂载后会被内联宽度覆盖 */
+  border-radius: 9px;
+  background: var(--primary);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--primary) 40%, transparent);
+  transition: transform 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.edit-mode-switch button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 8px 15px;
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.22s ease;
+}
+.edit-mode-switch button:hover {
+  color: var(--primary);
+}
+/* 选中态：文字压在滑块上，按钮自身不再画背景（背景交给滑块） */
+.edit-mode-switch button.on {
+  color: #fff;
+  font-weight: 600;
+}
+.edit-mode-switch button.on:hover {
+  color: #fff;
+}
+
+/* ========== 切面切换动画：方向跟随按钮左右滑动 ========== */
+.pane-right-enter-active,
+.pane-left-enter-active {
+  transition: opacity 0.28s ease, transform 0.36s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pane-right-leave-active,
+.pane-left-leave-active {
+  transition: opacity 0.16s ease, transform 0.2s ease;
+}
+.pane-right-enter-from { opacity: 0; transform: translateX(26px); }
+.pane-right-leave-to { opacity: 0; transform: translateX(-26px); }
+.pane-left-enter-from { opacity: 0; transform: translateX(-26px); }
+.pane-left-leave-to { opacity: 0; transform: translateX(26px); }
+
+/* ========== 模式二：粘贴代码解析 ========== */
+/* 宽度对齐可视化编辑的两栏总宽（左栏 + 中间缝隙 + 右栏）——
+   两栏布局是撑满内容的 grid，所以这里同样不设 max-width，直接占满即可 */
+.import-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+.import-area {
+  display: block;
+  width: 100%;
+  min-height: 170px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--chip-bg);
+  color: var(--text);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.import-area:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+}
+.import-area::placeholder {
+  color: var(--text-muted);
+}
+.import-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.import-actions :deep(.el-button + .el-button) {
+  margin-left: 0; /* 用 gap 控制间距，否则换行后左侧会多出一段空白 */
+}
+.import-note {
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .mc-layout {
   display: grid;
-  grid-template-columns: 2fr 3fr;
+  /* minmax(0, …) 而非 2fr/3fr：grid item 默认 min-width:auto，内容一宽就会撑破整行 */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   gap: 16px;
   align-items: start;
 }
@@ -1171,10 +1665,13 @@ async function copyText(content) {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 .panel-card {
   padding: 18px 20px;
   position: relative; /* 两栏切换时，离场栏绝对定位悬浮的锚点 */
+  min-width: 0;
+  max-width: 100%;
 }
 .panel-head {
   display: flex;
@@ -1475,7 +1972,9 @@ async function copyText(content) {
   margin-bottom: 14px;
 }
 .mode-tabs button {
-  flex: 1;
+  flex: 1 1 0%;
+  /* min-width:0：flex item 默认 min-width:auto，按钮文字会顶宽父容器 */
+  min-width: 0;
   border: none;
   background: transparent;
   padding: 8px 0;
@@ -1498,11 +1997,15 @@ async function copyText(content) {
 /* ========== 圆形色板 ========== */
 .sw-circle-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  /* minmax(0, 1fr)：列轨道可收缩到 0，色块再小也不会把网格撑出容器 */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 10px;
 }
 .sw-c {
   aspect-ratio: 1;
+  /* 不设 width/height/min-width：尺寸完全交给列轨道，窄屏自动变小、不会溢出 */
+  min-width: 0;
+  max-width: 100%;
   border-radius: 50%;
   border: 2px solid rgba(128, 128, 128, 0.3);
   cursor: pointer;
@@ -1532,6 +2035,8 @@ async function copyText(content) {
   border-radius: 10px;
   cursor: copy;
   padding: 0;
+  /* 触屏：横向拖动颜色点时不要带着页面一起滚 */
+  touch-action: none;
 }
 .grad-track-bg {
   position: absolute;
@@ -1711,8 +2216,28 @@ async function copyText(content) {
   align-items: center;
   flex-wrap: wrap;
   white-space: pre-wrap;
+  /* 禁用系统文本选择：必须带 -webkit- 前缀（iOS Safari 长期只认前缀版本）。
+     缺了它，手机长按字符会弹出系统自带的模糊选字（放大镜 + 蓝色系统选区），
+     我们自己的单字符精确选择反而被系统拦截 —— 用户看到的"只能模糊选中"就是它。 */
+  -webkit-user-select: none;
   user-select: none;
+  /* iOS 长按不弹出放大镜/拷贝菜单 */
+  -webkit-touch-callout: none;
   line-height: 1.4;
+  /* 选取区字符间距：调这一个值即可（每一侧的外边距，字符间实际间隔 = 该值 ×2） */
+  --char-gap: 5px;
+  /* 防撑破三件套：
+     min-width:0 —— flex item 不再被 min-content 顶宽（否则窄屏下"已换行的文字"会撑开父级）
+     max-width:100% —— 宽度上限锁死在容器内
+     overflow-x:clip —— 万一仍有内容变宽，就地裁掉，绝不产生横向滚动
+
+     注意用 clip 不用 hidden：hidden 会创建滚动容器，把导航栏的 position:sticky 变成相对它定位而失效。 */
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  /* 任意位置都能断行，min-content 宽度降到 1 字符，彻底消除"变直"的可能 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
   /* 高度随内容增减时平滑过渡（效果栏同款动画感）；interpolate-size 允许 auto 高度参与过渡 */
   interpolate-size: allow-keywords;
   transition: height 0.25s ease;
@@ -1721,9 +2246,13 @@ async function copyText(content) {
   font-size: 27px;
   font-weight: 700;
   padding: 2px 1px;
+  /* gap 已 0 宽，字符间隔靠这个外边距撑开（两侧相加 = 实际间隔） */
+  margin: 0 var(--char-gap, 5px);
   border-radius: 6px;
   cursor: pointer;
   color: var(--text);
+  /* 触屏点按即时响应（去掉老 iOS 的 300ms 点击延迟），不影响正常滚动 */
+  touch-action: manipulation;
   transition: box-shadow 0.1s ease;
 }
 .char:hover {
@@ -1733,18 +2262,46 @@ async function copyText(content) {
   background: color-mix(in srgb, var(--primary) 20%, transparent);
   box-shadow: 0 0 0 2px var(--primary);
 }
+/* 触屏引导条：桌面不显示，只在粗指针（触屏）设备出现 —— 窄屏下桌面版提示会被隐藏，
+   这里补一条常驻说明，否则手机用户根本不知道"再点一下能取消" */
+.touch-tip {
+  display: none;
+  margin: 9px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+@media (pointer: coarse) {
+  .touch-tip {
+    display: block;
+  }
+}
 .gap {
-  width: 13px;
+  /* 零宽度：不占布局空间，字符连续排列 → flex 换行后任何一行的行首都不会留空白
+     （旧版 gap 占 13/16px 实体宽度，第一行以 gap 开头、第二行以字符开头，行首不对齐）。
+     点击热区与插入竖线都用绝对定位画出来，功能不变。 */
+  width: 0;
   align-self: stretch;
   min-height: 36px;
   position: relative;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+}
+/* 扩展点击热区：正好覆盖字符之间的空隙（随 --char-gap 联动）。
+   不写死 ±9px —— 热区一旦大于空隙就会压到字符边缘，点字符边角会误触发插入。 */
+.gap::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * (var(--char-gap, 5px) + 1px));
+  right: calc(-1 * (var(--char-gap, 5px) + 1px));
 }
 .gap::after {
   content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 2px;
   height: 60%;
   border-radius: 2px;
@@ -1762,6 +2319,11 @@ async function copyText(content) {
   50% { opacity: 0.2; }
 }
 .reset-badge {
+  /* gap 已 0 宽，徽章绝对定位悬挂在间隙上方，不占布局 */
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  transform: translateX(-50%);
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -1776,7 +2338,7 @@ async function copyText(content) {
   z-index: 1;
 }
 .reset-badge:hover {
-  transform: scale(1.15);
+  transform: translateX(-50%) scale(1.15);
 }
 .preview-placeholder {
   font-size: 13px;
@@ -2024,11 +2586,188 @@ async function copyText(content) {
   white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.6;
+  /* 同 .select-area：锁死宽度上限，长代码串/选中文字都不会把页面撑宽 */
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  overflow-x: clip;
+  /* 手机上允许长按拖选部分代码复制 */
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* ========== 触屏适配 ========== */
+/* 竖向滑动留给页面滚动，横向滑动交给 JS 做连选 */
+.select-area {
+  touch-action: pan-y;
+}
+.multi-mode-btn {
+  height: 24px;
+  font-size: 12px;
+  padding: 0 9px;
+  border-radius: 6px;
+  min-width: 0;
+}
+/* 触屏没有真正的 hover：点击后 hover 态会一直粘着，这里还原成常态 */
+@media (hover: none) {
+  .char:hover {
+    box-shadow: none;
+  }
+  .qb-btn:hover:not(.on) {
+    border-color: var(--card-border);
+    color: var(--text);
+  }
+  .select-all-btn:hover,
+  .multi-mode-btn:hover {
+    border-color: var(--card-border);
+    color: var(--text);
+  }
+  .sw-c:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .grad-pt:hover {
+    transform: translate(-50%, -50%);
+  }
+}
+@media (pointer: coarse) {
+  /* 触摸目标放大到 ≥30px 高 */
+  .qb-btn {
+    height: 36px;
+    min-width: 38px;
+  }
+  .select-all-btn,
+  .multi-mode-btn,
+  .bg-reset-btn {
+    height: 30px;
+  }
+  .select-all-btn,
+  .multi-mode-btn {
+    padding: 0 11px;
+  }
+  .sym-toggle button {
+    height: 30px;
+    width: 34px;
+  }
+  /* 颜色点加大，手指好按 */
+  .grad-track {
+    height: 40px;
+  }
+  .grad-pt {
+    width: 26px;
+    height: 26px;
+  }
+  /* 注意：不要给 .sw-c 设固定宽高！
+     8 列 × 38px + 7×10px 间距 = 374px，任何窄于 ~430px 的手机都会被撑开横向滚动。
+     触摸目标大小改用下面的「减少列数」实现 —— 列少了，每格反而更大更好按。 */
+
+  /* 选中态描边：触屏下改用 inset 内描边。
+     原来的外阴影（box-shadow: 0 0 0 2px）是向外画的 ink 溢出，
+     会被 .select-area 的 overflow:clip 在部分移动端引擎里裁掉 →
+     用户看到的现象就是"有背景色、却没有框"。
+     inset 画在元素内部，任何裁剪环境都稳定可见。 */
+  .char.selected {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
+}
+/* 窄屏减少列数：既保证色块≥40px 好按，又绝不会撑破容器 */
+@media (max-width: 640px) {
+  .sw-circle-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 9px;
+  }
+}
+@media (max-width: 420px) {
+  .sw-circle-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
 }
 
 @media (max-width: 900px) {
   .mc-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .tool-header h1 {
+    font-size: 21px;
+  }
+  .tool-header p {
+    font-size: 13px;
+  }
+  /* 模式切换：窄屏铺满整行，两个按钮等宽（不换行） */
+  .edit-mode-switch {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .edit-mode-switch button {
+    flex: 1 1 0%;
+    padding: 9px 6px;
+    font-size: 12.5px;
+  }
+  .import-area {
+    min-height: 132px;
+    padding: 12px 13px;
+    font-size: 13px;
+  }
+  .import-actions {
+    gap: 8px;
+  }
+  .import-actions :deep(.el-button) {
+    flex: 1 1 auto;
+  }
+  .import-note {
+    flex-basis: 100%;
+  }
+  .panel-card {
+    padding: 14px 14px;
+  }
+  /* 面板头：按钮永不换行 —— 过长提示文字改为隐藏，避免把按钮挤到第二行 */
+  .panel-head {
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .panel-head-right {
+    flex-shrink: 0;
+  }
+  .hint-chip,
+  .out-tools .chip,
+  .preview-tools .chip {
+    display: none;
+  }
+  /* 快捷工具栏：不换行，改成横向滑动，卡片高度保持稳定 */
+  .quick-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding: 0 12px;
+  }
+  .quick-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .quick-bar > * {
+    flex-shrink: 0;
+  }
+  .qb-replace-input {
+    width: 96px;
+  }
+  /* 字符触摸目标加大 */
+  .char {
+    padding: 4px 2px;
+  }
+  /* gap 已是 0 宽设计（热区用 ::before 画出来），不再覆盖 width */
+  .select-area {
+    padding: 16px 12px;
+  }
+  .code-output {
+    font-size: 12.5px;
+    padding: 10px 12px;
   }
 }
 </style>

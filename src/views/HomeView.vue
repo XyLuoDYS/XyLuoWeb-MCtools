@@ -236,4 +236,42 @@ const tools = [
     grid-template-columns: 1fr;
   }
 }
+
+/* 手机：单列铺满，Hero 收缩 */
+@media (max-width: 640px) {
+  .hero {
+    min-height: 0;
+  }
+  .hero-text {
+    padding: 24px 20px;
+    gap: 10px;
+  }
+  .hero-title {
+    font-size: 27px;
+  }
+  .hero-sub {
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .hero-img {
+    height: 165px;
+  }
+  .widgets-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .widgets-left,
+  .widgets-news {
+    grid-column: auto;
+  }
+  .section-head {
+    margin-bottom: 12px;
+  }
+  .section-head h2 {
+    font-size: 19px;
+  }
+  .section-sub {
+    display: none;
+  }
+}
 </style>

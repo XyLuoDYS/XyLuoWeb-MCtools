@@ -7,8 +7,9 @@
 import { LOCAL_IMAGES } from '@/config/images'
 
 // 兜底图（网络和自定义都不可用时使用）
-const FALLBACK_HERO = '/images/hero.jpg'
-const FALLBACK_CARD = '/images/card.jpg'
+// 注意：路径必须对应 public/ 下真实存在的文件，否则会被 SPA 回退返回 index.html 导致破图
+const FALLBACK_HERO = '/images/index.jpg'
+const FALLBACK_CARD = '/images/card.png'
 const FALLBACK_BG = '/images/bg/bg (1).jpg'
 
 // 图库源：返回 JSON，内含图片直链
