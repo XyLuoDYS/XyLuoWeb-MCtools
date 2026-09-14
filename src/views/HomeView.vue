@@ -91,7 +91,7 @@ const tools = computed(() => [
       </div>
       <div class="tools-grid">
         <ToolCard
-          v-for="t in tools"
+          v-for="(t, i) in tools"
           :key="t.title"
           :title="t.title"
           :desc="t.desc"
@@ -99,6 +99,7 @@ const tools = computed(() => [
           :to="t.to"
           :image="t.image"
           :soon="t.soon"
+          :style="{ animationDelay: i * 70 + 'ms' }"
         />
       </div>
     </section>
@@ -222,6 +223,18 @@ const tools = computed(() => [
   /* auto-fit：工具数量变化时列数自动跟着变，不用手改 */
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 16px;
+}
+/* 卡片依次浮起（间隔由模板里的 animation-delay 逐个错开）。
+   backwards 填充：延迟期间先保持"透明+下沉"的起始态，否则会先闪一下再动。
+   用独立的 translate 属性而不是 transform —— 卡片的 hover 上浮用的正是 transform，两者互不干扰。 */
+.tools-grid > * {
+  animation: cardRise 0.46s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+@keyframes cardRise {
+  from {
+    opacity: 0;
+    translate: 0 18px;
+  }
 }
 
 /* 响应式 */

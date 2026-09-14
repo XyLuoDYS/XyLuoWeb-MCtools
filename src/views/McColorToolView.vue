@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import ReactiveColorPicker from '@/components/widgets/ReactiveColorPicker.vue'
+import { usePillSlider } from '@/composables/usePillSlider'
 
 /* ================= 基础数据 ================= */
 const VANILLA_COLORS = [
@@ -343,6 +344,8 @@ function charCss(i) {
 
 /* ================= 上色（一步直达） ================= */
 const colorMode = ref('legacy') // legacy | custom
+// 颜色模式切换的滑动指示块（「旧版 16 色 / 自定义颜色」）
+const { wrapRef: modeTabsRef, pillStyle: modeTabsPill } = usePillSlider(() => colorMode.value, { pad: 4 })
 const symbol = ref('§')
 const hexFormat = ref('amp')
 const fmtOpen = ref(false)
@@ -1194,13 +1197,16 @@ function doImport() {
             <span class="chip">{{ selection.size ? `已选 ${selection.size} 个字符` : '未选择' }}</span>
           </div>
 
-          <div class="mode-tabs">
+          <div ref="modeTabsRef" class="mode-tabs">
+            <span class="mode-pill" :class="{ ready: !!modeTabsPill }" :style="modeTabsPill || {}" aria-hidden="true" />
             <button :class="{ active: colorMode === 'legacy' }" @click="colorMode = 'legacy'">旧版 16 色</button>
             <button :class="{ active: colorMode === 'custom' }" @click="colorMode = 'custom'">自定义颜色</button>
           </div>
 
+          <!-- 两种颜色模式之间切换：内容跟着指示块的方向滑入 / 淡出 -->
+          <Transition :name="colorMode === 'custom' ? 'mpane-right' : 'mpane-left'" mode="out-in">
           <!-- 旧版 16 色 -->
-          <template v-if="colorMode === 'legacy'">
+          <div v-if="colorMode === 'legacy'" key="legacy" class="mode-pane">
             <div class="tip-line">选中字符后，<b>点击色块立即上色</b></div>
             <div class="sw-circle-grid">
               <button
@@ -1214,10 +1220,10 @@ function doImport() {
                 <span class="sw-c-code" :style="{ color: textOn(c.hex) }">{{ c.code }}</span>
               </button>
             </div>
-          </template>
+          </div>
 
           <!-- 自定义颜色（单色 + 渐变，编辑条一体） -->
-          <template v-else>
+          <div v-else key="custom" class="mode-pane">
             <div class="group-label">输出格式</div>
             <div ref="fmtSelectRef" class="fmt-select" :class="{ open: fmtOpen }">
               <button class="fmt-btn" type="button" @click="fmtOpen = !fmtOpen">
@@ -1299,7 +1305,8 @@ function doImport() {
                 <span class="gp-name">{{ gp.name }}</span>
               </button>
             </div>
-          </template>
+          </div>
+          </Transition>
         </div>
 
         <!-- 渐变预设暂存 -->
@@ -1988,8 +1995,12 @@ function doImport() {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
-/* ========== 模式选项卡 ========== */
+/* ========== 模式选项卡（滑动指示块） ========== */
+/* 高亮不再画在按钮上，而是由一个绝对定位的「指示块」滑过去 ——
+   切换时整块平移 + 宽度自适应，比「一格亮一格灭」有连续感。
+   宽度/位移由 usePillSlider 量取按钮真实尺寸后写进内联样式。 */
 .mode-tabs {
+  position: relative;
   display: flex;
   background: var(--chip-bg);
   border-radius: 12px;
@@ -1997,7 +2008,28 @@ function doImport() {
   gap: 4px;
   margin-bottom: 14px;
 }
+.mode-pill {
+  position: absolute;
+  z-index: 0;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: calc(50% - 6px); /* 首帧兜底，挂载后由内联宽度覆盖 */
+  border-radius: 9px;
+  background: var(--primary);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--primary) 40%, transparent);
+  opacity: 0; /* 还没量到尺寸时先不出现，避免首帧闪一下 */
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.2s ease;
+  pointer-events: none;
+}
+.mode-pill.ready {
+  opacity: 1;
+}
 .mode-tabs button {
+  position: relative;
+  z-index: 1;
   flex: 1 1 0%;
   /* min-width:0：flex item 默认 min-width:auto，按钮文字会顶宽父容器 */
   min-width: 0;
@@ -2008,17 +2040,39 @@ function doImport() {
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.22s ease, transform 0.12s ease;
 }
 .mode-tabs button:hover {
   color: var(--primary);
 }
+.mode-tabs button:active {
+  transform: scale(0.96);
+}
+/* 选中态：文字压在指示块上，按钮自身不画背景（背景交给指示块） */
 .mode-tabs button.active {
-  background: var(--primary);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--primary) 40%, transparent);
 }
+.mode-tabs button.active:hover {
+  color: #fff;
+}
+
+/* 两种颜色模式的内容切换：跟随指示块方向滑入 / 淡出 */
+.mode-pane {
+  min-width: 0;
+}
+.mpane-right-enter-active,
+.mpane-left-enter-active {
+  transition: opacity 0.24s ease, transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mpane-right-leave-active,
+.mpane-left-leave-active {
+  transition: opacity 0.14s ease, transform 0.16s ease;
+}
+.mpane-right-enter-from { opacity: 0; transform: translateX(18px); }
+.mpane-right-leave-to { opacity: 0; transform: translateX(-14px); }
+.mpane-left-enter-from { opacity: 0; transform: translateX(-18px); }
+.mpane-left-leave-to { opacity: 0; transform: translateX(14px); }
 
 /* ========== 圆形色板 ========== */
 .sw-circle-grid {
@@ -2214,6 +2268,11 @@ function doImport() {
   background: var(--chip-bg);
   cursor: pointer;
   transition: all 0.15s ease;
+  /* 新存下的预设会「弹」出来，一眼能看出刚加的是哪个 */
+  animation: chipIn 0.24s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes chipIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.92); }
 }
 .preset-chip:hover {
   border-color: var(--primary);
@@ -2288,7 +2347,8 @@ function doImport() {
   color: var(--text);
   /* 触屏点按即时响应（去掉老 iOS 的 300ms 点击延迟），不影响正常滚动 */
   touch-action: manipulation;
-  transition: box-shadow 0.1s ease;
+  /* 选中时底色淡入（原来只有描边有过渡，底色是瞬间跳变，显得生硬） */
+  transition: box-shadow 0.12s ease, background-color 0.16s ease;
 }
 .char:hover {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
@@ -2608,6 +2668,10 @@ function doImport() {
   background: var(--primary);
   color: #fff;
   font-weight: 700;
+  animation: symPop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes symPop {
+  from { transform: scale(0.86); }
 }
 
 /* ========== 代码输出 ========== */

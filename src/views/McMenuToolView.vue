@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { usePillSlider } from '@/composables/usePillSlider'
 
 /* ============================================================
    贴图库
@@ -82,6 +83,8 @@ const containerMeta = ref(null)
 const natSize = ref({ w: 0, h: 0 })
 const cropBox = ref({ x: 0, y: 0, w: 0, h: 0 })
 const cropMode = ref('auto')
+// 「底图范围」分段按钮的滑动指示块
+const { wrapRef: cropSegRef, pillStyle: cropSegPill } = usePillSlider(() => cropMode.value, { pad: 3 })
 const loadingCtn = ref(false)
 
 // 底图范围：自动裁切到「不透明像素的包围盒」（MC 的 GUI 区域就正好是这个尺寸）
@@ -712,7 +715,7 @@ onUnmounted(() => {
             <span class="card-title">画布</span>
             <span class="panel-head-right">
               <button type="button" class="mini" title="缩小一档" @click="zoomBy(-1)">−</button>
-              <span class="zoom-val" title="画布缩放（整数倍，贴图才不会糊）">{{ zoom }}×</span>
+              <span class="zoom-val" :key="zoom" title="画布缩放（整数倍，贴图才不会糊）">{{ zoom }}×</span>
               <button type="button" class="mini" title="放大一档" @click="zoomBy(1)">＋</button>
               <button type="button" class="mini wide" title="按窗口大小自动适应" @click="refit">适应</button>
             </span>
@@ -789,7 +792,8 @@ onUnmounted(() => {
 
             <div class="tb-item">
               <label class="tb-label">底图范围</label>
-              <div class="seg">
+              <div ref="cropSegRef" class="seg">
+                <span class="seg-pill" :class="{ ready: !!cropSegPill }" :style="cropSegPill || {}" aria-hidden="true" />
                 <button
                   v-for="m in CROP_MODES"
                   :key="m.id"
@@ -889,11 +893,12 @@ onUnmounted(() => {
             <span v-else class="chip">未选中</span>
           </div>
 
-          <div v-if="!selected" class="param-empty">
+          <Transition name="param" mode="out-in">
+          <div v-if="!selected" key="empty" class="param-empty">
             在画布上<b>单击</b>一个贴图，就能在这里精确调整它的位置、大小和层级～
           </div>
 
-          <template v-else>
+          <div v-else key="body" class="param-body">
             <div class="param-preview">
               <div class="param-thumb">
                 <img
@@ -970,7 +975,8 @@ onUnmounted(() => {
               <button type="button" class="btn sm" title="原位附近复制一个" @click="duplicateSelected">复制</button>
               <button type="button" class="btn sm danger" @click="removeSelected">删除</button>
             </div>
-          </template>
+          </div>
+          </Transition>
         </div>
 
         <!-- 贴图库 -->
@@ -1142,6 +1148,11 @@ onUnmounted(() => {
   color: var(--primary);
   transform: translateY(-1px);
 }
+/* 点下去有回弹：弹簧曲线先压过再回来，按钮"有肉感" */
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.96);
+  transition-duration: 0.08s;
+}
 .btn:disabled {
   opacity: 0.42;
   cursor: not-allowed;
@@ -1241,8 +1252,9 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* 分段按钮（与颜色工具页 mode-tabs 同一观感） */
+/* 分段按钮（与颜色工具页 mode-tabs 同一观感 + 同一个滑动指示块） */
 .seg {
+  position: relative;
   display: inline-flex;
   gap: 4px;
   padding: 3px;
@@ -1251,7 +1263,30 @@ onUnmounted(() => {
   border: 1px solid var(--card-border);
   width: fit-content;
 }
+/* 滑动指示块：宽度/位移由 usePillSlider 量取按钮真实尺寸后写进内联样式。
+   纯装饰，不参与命中（pointer-events:none），否则会挡住按钮点击。 */
+.seg-pill {
+  position: absolute;
+  z-index: 0;
+  left: 3px;
+  top: 3px;
+  bottom: 3px;
+  width: calc(50% - 5px); /* 首帧兜底，挂载后由内联宽度覆盖 */
+  border-radius: 7px;
+  background: var(--primary);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent);
+  opacity: 0; /* 还没量到尺寸时先不出现，避免首帧闪一下 */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.2s ease;
+  pointer-events: none;
+}
+.seg-pill.ready {
+  opacity: 1;
+}
 .seg button {
+  position: relative;
+  z-index: 1;
   border: none;
   background: transparent;
   padding: 4px 11px;
@@ -1261,19 +1296,30 @@ onUnmounted(() => {
   cursor: pointer;
   white-space: nowrap;
   font-family: inherit;
-  transition: all 0.18s ease;
+  transition: color 0.22s ease, transform 0.12s ease;
 }
 .seg button:hover {
   color: var(--primary);
 }
+.seg button:active {
+  transform: scale(0.94);
+}
+/* 选中态：文字压在指示块上，按钮自身不画背景（背景交给指示块） */
 .seg button.on {
-  background: var(--primary);
   color: #fff;
   font-weight: 600;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.seg button.on:hover {
+  color: #fff;
 }
 .seg.kbtns button {
   min-width: 38px;
+}
+/* 倍率按钮（×1~×4）不是选择态而是「动作」，没有指示块：
+   点下去给一个明显的按下回弹，点完立刻知道生效了 */
+.seg.kbtns button:active {
+  background: var(--primary);
+  color: #fff;
 }
 
 /* 行内控件排布 */
@@ -1315,6 +1361,10 @@ onUnmounted(() => {
   border-color: var(--primary);
   color: var(--primary);
 }
+.mini:active {
+  transform: scale(0.9);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
 .mini.wide {
   width: auto;
   padding: 0 9px;
@@ -1326,6 +1376,11 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
   min-width: 40px;
   text-align: center;
+  /* 数字换值时很短的一次放大，缩放操作有回馈 */
+  animation: zoomIn 0.22s ease;
+}
+@keyframes zoomIn {
+  from { transform: scale(0.78); opacity: 0.5; }
 }
 
 /* ==================== 布局 ==================== */
@@ -1368,7 +1423,12 @@ onUnmounted(() => {
   -webkit-touch-callout: none;
 }
 .stage.loading {
-  opacity: 0.5;
+  /* 底图还在解码：轻微呼吸而不是死盯着半透明 */
+  opacity: 0.55;
+  animation: stagePulse 1.1s ease-in-out infinite;
+}
+@keyframes stagePulse {
+  50% { opacity: 0.3; }
 }
 .stage-empty {
   position: absolute;
@@ -1381,6 +1441,11 @@ onUnmounted(() => {
 }
 .stage-empty.soft {
   color: color-mix(in srgb, var(--text-muted) 75%, transparent);
+  /* 空画布提示轻轻浮动，引导"拖一张进来" */
+  animation: hintFloat 2s ease-in-out infinite;
+}
+@keyframes hintFloat {
+  50% { transform: translateY(-4px); }
 }
 
 /* 画布上的贴图 */
@@ -1389,7 +1454,14 @@ onUnmounted(() => {
   cursor: grab;
   outline: 1px dashed transparent;
   outline-offset: 0;
-  transition: outline-color 0.15s ease;
+  transition: outline-color 0.16s ease, outline-offset 0.16s ease;
+  /* 新拖进来的贴图「弹」一下，能立刻看清落在了哪里。
+     用独立的 scale 属性而不是 transform —— transform 被内联样式占着（水平/垂直翻转），
+     两者是各自独立的属性，互不覆盖（CSS 会按 translate → rotate → scale → transform 依次合成）。 */
+  animation: placedIn 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes placedIn {
+  from { opacity: 0; scale: 0.72; }
 }
 .placed img {
   width: 100%;
@@ -1400,6 +1472,11 @@ onUnmounted(() => {
 }
 .placed.sel {
   outline-color: var(--primary);
+  /* 选中时虚线框向外让开一点，像"拎起来"了 */
+  outline-offset: 3px;
+}
+.placed:active {
+  cursor: grabbing;
 }
 /* 右下角缩放手柄：外圈用白色描边，深浅底都能看见 */
 .rz {
@@ -1414,6 +1491,18 @@ onUnmounted(() => {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: nwse-resize;
   touch-action: none;
+  /* 跟着选中态一起出现，而不是硬邦邦地闪出来 */
+  animation: rzIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: scale 0.14s ease;
+}
+@keyframes rzIn {
+  from { opacity: 0; scale: 0.3; }
+}
+.rz:hover {
+  scale: 1.2;
+}
+.rz:active {
+  scale: 1.35;
 }
 /* 指尖比鼠标粗，把命中区往外扩一圈 */
 .rz::before {
@@ -1451,6 +1540,11 @@ onUnmounted(() => {
   font-family: inherit;
   cursor: pointer;
   transition: all 0.18s ease;
+  /* 新加一层就从左侧滑进来，一眼看出"刚多了一层" */
+  animation: layerIn 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+@keyframes layerIn {
+  from { opacity: 0; transform: translateX(-8px) scale(0.94); }
 }
 .layer-chip:hover {
   border-color: var(--primary);
@@ -1498,6 +1592,18 @@ onUnmounted(() => {
 .param-empty b {
   color: var(--primary);
 }
+/* 参数面板「空态 ↔ 有选中」两态切换：淡入 + 轻微上浮 */
+.param-body {
+  min-width: 0;
+}
+.param-enter-active {
+  transition: opacity 0.22s ease, transform 0.26s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.param-leave-active {
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.param-enter-from { opacity: 0; transform: translateY(6px); }
+.param-leave-to { opacity: 0; transform: translateY(-4px); }
 .param-preview {
   display: flex;
   align-items: center;
@@ -1638,6 +1744,10 @@ onUnmounted(() => {
   transform: translateY(-1px);
   box-shadow: var(--shadow);
 }
+.lib-item:active {
+  transform: translateY(0) scale(0.96);
+  border-color: var(--primary);
+}
 .lib-item.used {
   border-color: color-mix(in srgb, var(--primary) 45%, var(--card-border));
   background: color-mix(in srgb, var(--primary) 7%, var(--card-bg));
@@ -1668,6 +1778,16 @@ onUnmounted(() => {
   padding: 3px;
   border-radius: 6px;
   border: 1px dashed transparent;
+  /* 用独立的 scale 属性：transform 被居中占着，两者互不覆盖 */
+  animation: ghostIn 0.16s ease-out;
+  transition: border-color 0.15s ease, background-color 0.15s ease, scale 0.15s ease;
+}
+@keyframes ghostIn {
+  from { opacity: 0.3; scale: 0.82; }
+}
+/* 拖到画布上方时轻微放大，明确"这里可以放" */
+.drag-ghost.over {
+  scale: 1.04;
 }
 .drag-ghost img {
   display: block;
@@ -1739,6 +1859,10 @@ onUnmounted(() => {
     transform: none;
     border-color: var(--card-border);
     color: var(--text-secondary);
+  }
+  /* 触屏没有 hover，缩放手柄不要粘在放大态上 */
+  .rz:hover {
+    scale: 1;
   }
 }
 </style>

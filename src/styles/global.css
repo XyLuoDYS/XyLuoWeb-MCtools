@@ -159,6 +159,21 @@ a {
   transform: translateY(-10px);
 }
 
+/* ========== 动效总开关：尊重系统的「减弱动态效果」 ========== */
+/* 站内的滑动指示块、弹入、呼吸灯等动效都是纯装饰。
+   用户在系统里开了「减少动画」（前庭功能敏感 / 晕动症），就把它们压到瞬时完成，
+   只保留状态本身的变化 —— 功能完全不受影响，只是"不晃"。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ========== Element 浮层统一观感 ========== */
 /* el-select / el-popover 的下拉浮层会被 teleport 到 <body>，
    组件内的 scoped 样式够不着，只能在这里全局定义。
