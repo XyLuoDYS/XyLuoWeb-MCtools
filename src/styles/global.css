@@ -159,6 +159,56 @@ a {
   transform: translateY(-10px);
 }
 
+/* ========== Element 浮层统一观感 ========== */
+/* el-select / el-popover 的下拉浮层会被 teleport 到 <body>，
+   组件内的 scoped 样式够不着，只能在这里全局定义。
+   站点里所有这类浮层统一挂 .xy-popper 类，否则会用 Element 的默认
+   底色/边框/圆角/箭头，和站点卡片风格明显对不上（暗色下尤其跳）。 */
+.xy-popper.el-popper,
+.xy-popper.el-popper.is-light {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-hover);
+  padding: 4px;
+}
+/* 箭头要跟着换底色，否则会露出一个浅色小三角 */
+.xy-popper.el-popper .el-popper__arrow::before,
+.xy-popper.el-popper.is-light .el-popper__arrow::before {
+  background: var(--card-bg);
+  border-color: var(--card-border);
+}
+.xy-popper .el-select-dropdown__list {
+  padding: 0;
+}
+.xy-popper .el-select-dropdown__item {
+  height: auto;
+  line-height: 1.5;
+  padding: 7px 10px;
+  margin: 1px 0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.xy-popper .el-select-dropdown__item.is-hovering {
+  background: var(--chip-bg);
+  color: var(--text);
+}
+.xy-popper .el-select-dropdown__item.is-selected {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.xy-popper .el-select-dropdown__item.is-selected.is-hovering {
+  background: color-mix(in srgb, var(--primary) 19%, transparent);
+}
+/* 浮层内滚动条与站点一致 */
+.xy-popper .el-scrollbar__thumb {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
 /* ========== 通用工具类 ========== */
 .page-container {
   width: 100%;

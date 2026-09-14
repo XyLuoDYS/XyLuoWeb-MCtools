@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ClockWidget from '@/components/widgets/ClockWidget.vue'
 import TipWidget from '@/components/widgets/TipWidget.vue'
 import NewsWidget from '@/components/widgets/NewsWidget.vue'
@@ -9,26 +9,38 @@ import { fetchAnimeImage, FALLBACK_HERO, FALLBACK_CARD } from '@/utils/animeImag
 // 图片改为从网上动漫图库拉取（失败时回退到内置生成图）
 const heroImg = ref(FALLBACK_HERO)
 const mcColorImg = ref(FALLBACK_CARD)
+const mcMenuImg = ref(FALLBACK_CARD)
 
 onMounted(async () => {
   heroImg.value = await fetchAnimeImage('hero', FALLBACK_HERO)
   mcColorImg.value = await fetchAnimeImage('card', FALLBACK_CARD)
+  // 用不同的 key，两张工具卡片才会拿到不同的图
+  mcMenuImg.value = await fetchAnimeImage('menu', FALLBACK_CARD)
 })
 
-const tools = [
+const tools = computed(() => [
   {
     title: '颜色代码生成',
     desc: '逐字选取上色：MC 旧版 16 色（&/§ 可选）或十六进制颜色（11 种格式），支持渐变、字体效果、插入重置，实时预览 MC 聊天框效果。',
     icon: 'MagicStick',
-    to: '/mccolor'
+    to: '/mccolor',
+    image: mcColorImg.value
+  },
+  {
+    title: '贴图菜单生成',
+    desc: '挑一个 MC 原版容器当底图，把你自绘的按钮贴图拖上去摆好位置，自定义导出分辨率，一键生成菜单 PNG。',
+    icon: 'PictureFilled',
+    to: '/mcmenu',
+    image: mcMenuImg.value
   },
   {
     title: '更多工具',
     desc: '更多实用小工具正在施工中，敬请期待……',
     icon: 'Box',
-    soon: true
+    soon: true,
+    image: null
   }
-]
+])
 </script>
 
 <template>
@@ -85,7 +97,7 @@ const tools = [
           :desc="t.desc"
           :icon="t.icon"
           :to="t.to"
-          :image="t.to ? mcColorImg : null"
+          :image="t.image"
           :soon="t.soon"
         />
       </div>
@@ -207,7 +219,8 @@ const tools = [
 }
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* auto-fit：工具数量变化时列数自动跟着变，不用手改 */
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 16px;
 }
 
@@ -231,9 +244,6 @@ const tools = [
   }
   .widgets-news {
     grid-column: span 2;
-  }
-  .tools-grid {
-    grid-template-columns: 1fr;
   }
 }
 

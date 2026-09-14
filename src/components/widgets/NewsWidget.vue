@@ -253,7 +253,7 @@ onMounted(loadNews)
         v-model="current"
         size="small"
         class="news-picker"
-        popper-class="news-popper"
+        popper-class="xy-popper news-popper"
         placeholder="选择日期"
       >
         <el-option v-for="(it, i) in items" :key="i" :value="i" :label="it.dateText || '—'">
@@ -664,21 +664,17 @@ onMounted(loadNews)
   border-top: 1px solid var(--card-border);
 }
 
-/* 下拉浮层（teleport 到 body） */
+/* 下拉浮层（teleport 到 body）
+   底色/边框/圆角/箭头/悬停/选中态统一交给 global.css 的 .xy-popper，
+   这里只写「新闻下拉」特有的部分。
+   之前这里只设了 border/radius/shadow 而没设底色，浮层就沿用了 Element
+   默认的 --el-bg-color-overlay，暗色下和站点卡片明显不同色；箭头也没换色，
+   会露出一块浅色小三角 —— 这就是「菜单风格和网页不符」的来源。 */
 .news-popper.el-popper {
-  border: 1px solid var(--card-border);
-  border-radius: 10px;
-  box-shadow: var(--shadow-hover);
   max-width: min(360px, calc(100vw - 32px));
 }
-.news-popper .el-select-dropdown__item {
-  height: auto;
-  line-height: 1.5;
-  padding: 7px 12px;
-}
-.news-popper .el-select-dropdown__item.is-selected {
-  color: var(--primary);
-  font-weight: 600;
+.news-popper .el-select-dropdown__item.is-selected .opt-date {
+  color: color-mix(in srgb, var(--primary) 75%, var(--text-muted));
 }
 
 @media (max-width: 640px) {

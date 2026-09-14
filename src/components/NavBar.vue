@@ -10,7 +10,8 @@ const theme = useThemeStore()
 
 const navLinks = [
   { path: '/', label: '首页' },
-  { path: '/mccolor', label: '颜色代码生成' }
+  { path: '/mccolor', label: '颜色代码生成' },
+  { path: '/mcmenu', label: '贴图菜单生成' }
 ]
 
 const showThemePanel = ref(false)

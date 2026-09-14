@@ -16,6 +16,12 @@ const router = createRouter({
       meta: { title: '颜色代码生成' }
     },
     {
+      path: '/mcmenu',
+      name: 'mcmenu',
+      component: () => import('@/views/McMenuToolView.vue'),
+      meta: { title: '贴图菜单生成' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/'
     }
