@@ -209,6 +209,69 @@ a {
   opacity: 0.5;
 }
 
+/* ========== 站点风表单控件（Element 覆写） ========== */
+/* 站内所有输入类控件统一挂 .xy-field。
+   Element 默认是「浅底 + 描边盒」的观感，在暗色下尤其跳、和站点对不上；
+   这里换成站内一贯的 chip 底 + 圆角 + 主色聚焦环，
+   与 .seg 分段按钮、.chip 标签、新闻日期选择器保持同一套视觉语言。 */
+.xy-field.el-input .el-input__wrapper,
+.xy-field.el-input-number .el-input__wrapper,
+.xy-field.el-select .el-select__wrapper {
+  background: var(--chip-bg);
+  box-shadow: none;
+  border-radius: 9px;
+  padding: 0 10px;
+  min-height: 30px;
+  transition: background-color 0.18s ease, box-shadow 0.18s ease;
+}
+.xy-field.el-input .el-input__wrapper:hover,
+.xy-field.el-input-number .el-input__wrapper:hover,
+.xy-field.el-select .el-select__wrapper:hover {
+  background: color-mix(in srgb, var(--primary) 10%, var(--chip-bg));
+}
+.xy-field.el-input .el-input__wrapper.is-focus,
+.xy-field.el-input-number .el-input__wrapper.is-focus,
+.xy-field.el-select .el-select__wrapper.is-focused {
+  background: color-mix(in srgb, var(--primary) 8%, var(--chip-bg));
+  box-shadow: 0 0 0 1px var(--primary) inset;
+}
+.xy-field .el-input__inner {
+  color: var(--text);
+}
+.xy-field .el-input__inner,
+.xy-field .el-select__selected-item {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.xy-field .el-input__inner::placeholder,
+.xy-field .el-select__placeholder {
+  color: var(--text-muted);
+}
+.xy-field .el-select__caret,
+.xy-field .el-input__icon {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+/* 数字框：居中 + 等宽数字，读数整齐 */
+.xy-field.is-num .el-input__inner {
+  text-align: center;
+}
+/* 数字框隐藏 Element 的上下箭头（hover 才出现，会顶掉文字） */
+.xy-field.el-input-number .el-input-number__decrease,
+.xy-field.el-input-number .el-input-number__increase {
+  display: none;
+}
+
+/* 开关：跟随站点主色，关态用 chip 底，避免 Element 默认的浅灰跳色 */
+.xy-switch.el-switch .el-switch__core {
+  background: var(--chip-bg);
+  border-color: var(--card-border);
+}
+.xy-switch.el-switch.is-checked .el-switch__core {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
 /* ========== 通用工具类 ========== */
 .page-container {
   width: 100%;
