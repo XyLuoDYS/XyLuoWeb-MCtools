@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import ReactiveColorPicker from '@/components/widgets/ReactiveColorPicker.vue'
 import { usePillSlider } from '@/composables/usePillSlider'
+import { useLayoutAnim } from '@/composables/useLayoutAnim'
 
 /* ================= 基础数据 ================= */
 const VANILLA_COLORS = [
@@ -346,6 +347,9 @@ function charCss(i) {
 const colorMode = ref('legacy') // legacy | custom
 // 颜色模式切换的滑动指示块（「旧版 16 色 / 自定义颜色」）
 const { wrapRef: modeTabsRef, pillStyle: modeTabsPill } = usePillSlider(() => colorMode.value, { pad: 4 })
+// 卡片伸缩动画：切换颜色模式 / 面板展开收起时，卡片高度平滑过渡（后面的卡片跟着一起走）
+const layoutRef = ref(null)
+useLayoutAnim(layoutRef, { selector: '.panel-card', duration: 340 })
 const symbol = ref('§')
 const hexFormat = ref('amp')
 const fmtOpen = ref(false)
@@ -1124,7 +1128,7 @@ function doImport() {
 </script>
 
 <template>
-  <div class="page-container">
+  <div ref="layoutRef" class="page-container">
     <div class="tool-header">
       <h1><el-icon class="h-icon"><MagicStick /></el-icon> 颜色代码生成</h1>
       <p>
