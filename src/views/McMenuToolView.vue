@@ -514,6 +514,8 @@ function duplicateSelected() {
    拖动 / 缩放（指针事件，鼠标与触屏统一）
    ============================================================ */
 let drag = null
+// 正在拖动的贴图 id：只用来抬升层级，保证拖动中不会被他上面的贴图盖住
+const draggingId = ref(null)
 
 function designPoint(e) {
   const rect = stageRef.value.getBoundingClientRect()
@@ -523,15 +525,23 @@ function designPoint(e) {
   }
 }
 
+/** 当前选中项的坐标快照，作为「绝对位移」计算的基址。 */
+function snapshotSelection() {
+  return selectedItems.value.map(it => ({ id: it.id, x: it.x, y: it.y, w: it.w, h: it.h }))
+}
+
 /**
- * 把一组贴图整体平移 (dx, dy)，保证**整组**都不越界。
+ * 把 base 里这组贴图整体平移到「快照位置 + (dx, dy)」，保证**整组**都不越界。
  * 单个贴图走这里也等价 —— 组只有一个成员，等价于直接夹取。
  * 逐个夹取是不行的：那样组内每个成员会各自撞到边界，相对位置就被挤乱了。
+ *
+ * ⚠️ 必须是「快照 + 位移」的**绝对**写法，不能写成「当前值 + 位移」：
+ * 拖动的 dx 是相对按下点的累计位移，每帧都被调用一次，
+ * 用当前值当基址会变成 1+2+3+… 的累加，贴图飞得比指针快得多。
  */
-function moveSelectionBy(dx, dy, doSnap = true) {
+function moveSelectionTo(base, dx, dy, doSnap = true) {
   const d = design.value
-  const base = selectedItems.value.map(it => ({ id: it.id, x: it.x, y: it.y, w: it.w, h: it.h }))
-  if (!base.length) return
+  if (!base || !base.length) return
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity
@@ -555,6 +565,11 @@ function moveSelectionBy(dx, dy, doSnap = true) {
   }
 }
 
+/** 相对当前位置的增量移动（方向键微调、快速复制偏移等用这个）。 */
+function moveSelectionBy(dx, dy, doSnap = true) {
+  moveSelectionTo(snapshotSelection(), dx, dy, doSnap)
+}
+
 function startDrag(mode, it, e) {
   if (e.button) return
   e.preventDefault()
@@ -562,7 +577,20 @@ function startDrag(mode, it, e) {
   // 拖一个没选中的贴图 → 先单选它；拖已选中的 → 整组一起走
   if (!selectedIds.value.has(it.id)) selectOnly(it.id)
   const p = designPoint(e)
-  drag = { mode, id: it.id, sx: p.x, sy: p.y, ow: it.w, oh: it.h, moved: false }
+  drag = {
+    mode,
+    id: it.id,
+    sx: p.x,
+    sy: p.y,
+    ow: it.w,
+    oh: it.h,
+    moved: false,
+    // 按下瞬间的坐标快照：整段拖动都基于它算绝对位移（见 moveSelectionTo 注释）
+    base: snapshotSelection()
+  }
+  draggingId.value = it.id
+  // 光标移出贴图范围后仍然保持「抓取中」的观感
+  document.body.style.cursor = 'grabbing'
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
   window.addEventListener('pointercancel', onPointerUp)
@@ -594,7 +622,7 @@ function onPointerMove(e) {
       if (Math.hypot(dx, dy) <= 1.5) return
       drag.moved = true
     }
-    moveSelectionBy(dx, dy)
+    moveSelectionTo(drag.base, dx, dy)
   } else {
     const it = items.value.find(i => i.id === drag.id)
     if (!it) return
@@ -609,6 +637,8 @@ function onPointerUp() {
   if (!drag) return
   const d = drag
   drag = null
+  draggingId.value = null
+  document.body.style.cursor = ''
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   window.removeEventListener('pointercancel', onPointerUp)
@@ -1079,7 +1109,7 @@ onUnmounted(() => {
                 v-for="it in items"
                 :key="it.id"
                 class="placed"
-                :class="{ sel: selectedIds.has(it.id) }"
+                :class="{ sel: selectedIds.has(it.id), dragging: draggingId === it.id }"
                 :style="placedStyle(it)"
                 :title="`${it.label} · ${it.x},${it.y} · ${it.w}×${it.h}`"
                 @pointerdown="onItemDown(it, $event)"
@@ -1974,6 +2004,13 @@ onUnmounted(() => {
   outline-color: var(--primary);
   /* 选中时虚线框向外让开一点，像"拎起来"了 */
   outline-offset: 3px;
+  /* 抬一层：被后面的贴图压住时，边框和手柄也能看见 */
+  z-index: 2;
+}
+/* 拖动中再抬一层 + 落影，保证被拖的贴图一定可见（重叠时也不会被盖住） */
+.placed.dragging {
+  z-index: 5;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
 }
 .placed:active {
   cursor: grabbing;
