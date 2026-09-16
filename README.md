@@ -19,6 +19,20 @@ npm run build    # 构建到 dist/
 npm run preview  # 预览构建产物
 ```
 
+## 部署注意（重要）
+
+路由使用 **History 模式**（URL 不带 `#`，形如 `/mccolor`）。
+因此静态托管时**必须配置「所有路径回退到 index.html」**，否则刷新子页面会 404：
+
+| 平台 | 做法 |
+|---|---|
+| Nginx | `try_files $uri $uri/ /index.html;` |
+| Netlify / Cloudflare Pages | 已内置 [`public/_redirects`](./public/_redirects)，开箱即用 |
+| Vercel | 已内置 [`public/vercel.json`](./public/vercel.json)，开箱即用 |
+| GitHub Pages / 纯静态托管 | **不支持**这种回退 → 请把 `src/router/index.js` 改回 `createWebHashHistory` |
+
+（若改用 `createWebHashHistory`，URL 会带 `#`，但无需任何服务端配置。）
+
 ## 技术栈
 
 Vue 3（`<script setup>`）· Vite 5 · Element Plus · Pinia · Vue Router（hash 模式）
@@ -53,14 +67,15 @@ public/          静态资源（images / fonts）
 | **源代码**（`src/` 等） | [MIT](./LICENSE) —— 可自由使用、修改、商用 |
 | **作者自绘贴图**（`mine/`） | [LICENSE-ASSETS](./LICENSE-ASSETS.md) —— **仅限非商业使用，禁止商用** |
 | **Minecraft 原版贴图**（`vanilla/`） | 版权归 Mojang / Microsoft，使用须遵守 [Minecraft 使用准则](https://www.minecraft.net/usage-guidelines) |
-| **插画**（`public/images/`） | 版权归**画师 Ashima**，本仓库不授予许可，**请勿商用** |
+| **插画**（`public/images/`） | 版权归**画师 アシマ / Ashima**（[Pixiv](https://www.pixiv.net/users/2642047)），画师声明**禁止转载**，本仓库不授予许可、**请勿商用** |
 | **字体**（`public/fonts/`） | 均为可自由使用字体（CC0 / OFL），详见 [LICENSE-ASSETS 第四节](./LICENSE-ASSETS.md) |
 
 简言之：**代码随便用，但 `mine/` 里的原创贴图不能拿去商用，
-`public/images/` 里的插画（画师 Ashima 作品）也不在本仓库授权范围内。**
+`public/images/` 里的插画（画师 Ashima 作品，已声明禁止转载）也不在本仓库授权范围内。**
 
 只想取用代码的话，直接把 `src/` 拿走即可，完全没有版权负担。
-若要整体使用本项目，请**删除或替换** `public/images/` 下的插画。
+若要整体使用本项目，请**删除或替换** `public/images/` 下的插画
+（详见 [`public/images/README.md`](./public/images/README.md)）。
 
 ## 贡献
 

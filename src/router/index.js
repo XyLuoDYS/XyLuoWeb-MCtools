@@ -1,7 +1,13 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 
+// 用 History 模式（不带 #）：URL 形如 /mccolor
+// ⚠️ 静态部署时必须把所有路径（404）回退到 index.html，否则刷新子页面会 404：
+//   · Nginx      try_files $uri $uri/ /index.html;
+//   · Netlify    见 public/_redirects
+//   · Vercel     见 public/vercel.json
+//   · GitHub Pages / 纯静态托管不支持这种回退 → 请改回 createWebHashHistory
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',

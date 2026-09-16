@@ -1,0 +1,8 @@
+# SPA 回退规则（Netlify / Cloudflare Pages 自动读取本文件）
+#
+# History 模式下直接访问 /mccolor 这类子路径时，服务器上并没有对应文件，
+# 需要把请求回退到 index.html 交给前端路由，否则刷新会 404。
+#
+# 语法：<来源>  <目标>  <状态码>
+
+/*    /index.html   200
