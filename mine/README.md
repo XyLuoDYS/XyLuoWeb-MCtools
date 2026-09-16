@@ -15,4 +15,25 @@
 - button_hover.png
 - icon_shop.png
 
+## ⚠️ 本目录的授权条款
+
+**本目录下的贴图仅限非商业使用，禁止任何形式的商业使用。**
+
+允许：非商业项目 / 服务器 / 整合包中使用、复制、修改、二次创作、随非商业作品分发。
+禁止：出售、付费资源包、营利性服务器、广告变现、转售或再许可。
+
+使用时请保留署名：
+
+> 贴图素材来源：XyLuoDYS（https://github.com/XyLuoDYS/XyLuoWeb-MCtools）
+
+需要商用授权请通过仓库 Issue 联系作者。完整条款见
+[../LICENSE-ASSETS.md](../LICENSE-ASSETS.md)。
+
+> 📌 往这里丢图 = 你确认这些图是**你自己画的**，并同意按上述「仅限非商业使用」的条款授权。
+> **不要**把 Minecraft 原版素材或任何来源不明的图片放进这个目录。
+
+---
+
 > 原版容器贴图在项目根目录的 `vanilla/container/`，往里面加 PNG 也能被识别。
+> ⚠️ 该目录版权归 Mojang / Microsoft，使用须遵守
+> [Minecraft 使用准则](https://www.minecraft.net/usage-guidelines)。

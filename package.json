@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "description": "MC 工具站：颜色代码生成 / 贴图菜单生成",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
