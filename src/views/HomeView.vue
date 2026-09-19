@@ -4,31 +4,31 @@ import ClockWidget from '@/components/widgets/ClockWidget.vue'
 import TipWidget from '@/components/widgets/TipWidget.vue'
 import NewsWidget from '@/components/widgets/NewsWidget.vue'
 import ToolCard from '@/components/ToolCard.vue'
-import { fetchAnimeImage, FALLBACK_HERO, FALLBACK_CARD } from '@/utils/animeImage'
+import { fetchAnimeImage, FALLBACK_HERO, FALLBACK_CARD, FALLBACK_MENU } from '@/utils/animeImage'
 
-// 图片改为从网上动漫图库拉取（失败时回退到内置生成图）
+// 图片走本地配置（src/config/images.js），不请求第三方图库
 const heroImg = ref(FALLBACK_HERO)
 const mcColorImg = ref(FALLBACK_CARD)
-const mcMenuImg = ref(FALLBACK_CARD)
+const mcMenuImg = ref(FALLBACK_MENU)
 
 onMounted(async () => {
   heroImg.value = await fetchAnimeImage('hero', FALLBACK_HERO)
   mcColorImg.value = await fetchAnimeImage('card', FALLBACK_CARD)
   // 用不同的 key，两张工具卡片才会拿到不同的图
-  mcMenuImg.value = await fetchAnimeImage('menu', FALLBACK_CARD)
+  mcMenuImg.value = await fetchAnimeImage('menu', FALLBACK_MENU)
 })
 
 const tools = computed(() => [
   {
     title: '颜色代码生成',
-    desc: '逐字选取上色：MC 旧版 16 色（&/§ 可选）或十六进制颜色（11 种格式），支持渐变、字体效果、插入重置，实时预览 MC 聊天框效果。',
+    desc: '逐字选取上色：MC 旧版 16 色（&/§ 可选）或十六进制颜色（11 种格式），支持渐变、字体效果、插入重置，实时预览 MC 聊天框效果',
     icon: 'MagicStick',
     to: '/mccolor',
     image: mcColorImg.value
   },
   {
     title: '贴图菜单生成',
-    desc: '挑一个 MC 原版容器当底图，把你自绘的按钮贴图拖上去摆好位置，自定义导出分辨率，一键生成菜单 PNG。',
+    desc: '挑一个 MC 原版容器当底图，把你自绘的按钮贴图拖上去摆好位置，自定义导出分辨率，一键生成菜单 PNG',
     icon: 'PictureFilled',
     to: '/mcmenu',
     image: mcMenuImg.value
@@ -56,7 +56,7 @@ const tools = computed(() => [
           你好，<span class="highlight">冒险家</span>
         </h1>
         <p class="hero-sub">
-          这里是 XyLuoDYS 的工具站 —— 为 Minecraft 玩家与服务器主打造的实用小工具集合，持续更新中。
+          这里是 XyLuoDYS 的工具站 —— 为 Minecraft 玩家与服务器主打造的实用小工具集合，持续更新中
         </p>
         <div class="hero-actions">
           <router-link to="/mccolor">

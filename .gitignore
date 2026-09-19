@@ -3,5 +3,4 @@ dist
 .DS_Store
 *.local
 
-# 本地 AI 工作数据（工作日志），不需要进仓库
 .workbuddy/

@@ -11,7 +11,9 @@ const theme = useThemeStore()
 const navLinks = [
   { path: '/', label: '首页' },
   { path: '/mccolor', label: '颜色代码生成' },
-  { path: '/mcmenu', label: '贴图菜单生成' }
+  { path: '/mcmenu', label: '贴图菜单生成' },
+  { path: '/guide', label: '使用教程' },
+  { path: '/terms', label: '素材条款' }
 ]
 
 const showThemePanel = ref(false)
@@ -74,7 +76,7 @@ watch(() => route.path, () => {
   <header class="navbar">
     <div class="navbar-inner">
       <router-link to="/" class="logo">
-        <span class="logo-block">X</span>
+        <span class="logo-block" aria-hidden="true" />
         <span class="logo-text">XyLuoDYS <em>工具站</em></span>
       </router-link>
 
@@ -180,12 +182,12 @@ watch(() => route.path, () => {
   width: 34px;
   height: 34px;
   border-radius: 9px;
-  background: var(--primary);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 19px;
-  font-family: Consolas, monospace;
+  /* 图案是白色的，所以底色继续跟主题色走（和站点图标同一份图形） */
+  background-color: var(--primary);
+  background-image: url('/mark.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: auto 58%;
   box-shadow: 0 3px 10px var(--primary-light);
 }
 .logo-text em {

@@ -1059,7 +1059,7 @@ onUnmounted(() => {
   <div class="page-container">
     <div class="tool-header">
       <h1><el-icon class="h-icon"><Picture /></el-icon> MC 贴图菜单生成</h1>
-      <p>左侧挑一个 MC 原版容器当底图，把右侧你画的按钮贴图拖进画布摆好位置，设定分辨率后导出 PNG。</p>
+      <p>左侧挑一个 MC 原版容器当底图，把右侧你画的按钮贴图拖进画布摆好位置，设定分辨率后导出 PNG</p>
     </div>
 
     <div ref="layoutRef" class="menu-layout">
@@ -1268,7 +1268,7 @@ onUnmounted(() => {
           <Transition name="param" mode="out-in">
           <div v-if="!selCount" key="empty" class="param-empty">
             在画布上<b>单击</b>一个贴图，就能在这里精确调整它的位置、大小和层级～<br />
-            按住 <b>Ctrl</b> 单击可以多选，多选后能批量对齐。
+            按住 <b>Ctrl</b> 单击可以多选，多选后能批量对齐
           </div>
 
           <!-- 单个：完整参数 -->
@@ -1396,7 +1396,7 @@ onUnmounted(() => {
           </div>
 
           <div v-if="!items.length" class="param-empty">
-            画布上还没有贴图～ 从下面的贴图库拖一张进来，它就会出现在这里。
+            画布上还没有贴图～ 从下面的贴图库拖一张进来，它就会出现在这里
           </div>
 
           <template v-else>
@@ -1452,11 +1452,16 @@ onUnmounted(() => {
           </template>
         </div>
 
-        <!-- 贴图库 -->
+        <!-- 贴图库（只放自绘贴图；MC 原版贴图只在画布上方的「容器底图」里选） -->
         <div class="card panel-card">
           <div class="panel-head">
             <span class="card-title">贴图库</span>
-            <span class="chip">{{ mineList.length + vanillaList.length }} 个</span>
+            <span class="lib-head-right">
+              <router-link class="lib-contribute" to="/guide#contribute">
+                想贡献贴图？
+              </router-link>
+              <span class="chip">{{ mineList.length }} 个</span>
+            </span>
           </div>
 
           <div class="lib-scroll">
@@ -1471,27 +1476,6 @@ onUnmounted(() => {
               <div v-else class="lib-grid">
                 <button
                   v-for="r in mineList"
-                  :key="r.key"
-                  type="button"
-                  class="lib-item"
-                  :class="{ used: isUsed(r) }"
-                  :title="`${r.label}（拖到画布，或单击放到正中央）`"
-                  @pointerdown="onLibDown(r, $event)"
-                >
-                  <img :src="r.url" :alt="r.label" draggable="false" />
-                  <span class="lib-name">{{ r.label }}</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="lib-group">
-              <div class="lib-group-head">
-                <span>MC 原版贴图</span>
-                <span class="lib-count">{{ vanillaList.length }}</span>
-              </div>
-              <div class="lib-grid">
-                <button
-                  v-for="r in vanillaList"
                   :key="r.key"
                   type="button"
                   class="lib-item"
@@ -2279,6 +2263,27 @@ onUnmounted(() => {
 }
 
 /* ==================== 贴图库 ==================== */
+/* 标题右侧：贡献提示 + 数量。提示做成虚线小胶囊，一眼看出「这是能点的」 */
+.lib-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.lib-contribute {
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 48%, transparent);
+  transition: all 0.18s ease;
+}
+.lib-contribute:hover {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-style: solid;
+}
 .lib-scroll {
   max-height: 46vh;
   overflow-y: auto;

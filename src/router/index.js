@@ -28,11 +28,35 @@ const router = createRouter({
       meta: { title: '贴图菜单生成' }
     },
     {
+      // ⚠️ 路径不能叫 /license —— 项目根目录有同名文件 LICENSE，
+      // dev server 的静态文件中间件会直接把它当文件返回（页面变纯文本）。
+      // 同理别用 /readme、/contributing 之类与根目录文件重名的路径。
+      path: '/terms',
+      name: 'terms',
+      component: () => import('@/views/LicenseView.vue'),
+      meta: { title: '素材授权条款' }
+    },
+    {
+      // 根目录没有无扩展名的 guide 文件，所以 /guide 可以安全使用
+      // （不像 /license 会被同名文件 LICENSE 抢走）
+      path: '/guide',
+      name: 'guide',
+      component: () => import('@/views/GuideView.vue'),
+      meta: { title: '使用教程' }
+    },
+    {
       path: '/:pathMatch(.*)*',
       redirect: '/'
     }
   ],
-  scrollBehavior() {
+  scrollBehavior(to, from, savedPosition) {
+    // 浏览器前进/后退：回到原来的位置
+    if (savedPosition) return savedPosition
+    if (to.hash) {
+      // 锚点定位：目标组件是懒加载的，元素可能还没挂载 —— vue-router 会自己重试直到能定位；
+      // top 留出 sticky 导航栏的高度，别让标题被压在栏下面
+      return { el: to.hash, top: 78, behavior: 'smooth' }
+    }
     return { top: 0 }
   }
 })
